@@ -22,10 +22,14 @@
                 .forProject(page.params.region, page.params.project)
                 .users.updateEmailVerification($user.$id, !$user.emailVerification);
             await invalidate(Dependencies.USER);
+
+            const isVerified = !$user.emailVerification;
+            const subject = $user.name ? `for ${$user.name} ` : '';
+            const action = isVerified ? 'has been verified' : 'is no longer verified';
+            const message = `The email ${subject}${action}`.trim();
+
             addNotification({
-                message: `${$user.name || $user.email || $user.phone || 'The account'} has been ${
-                    !$user.emailVerification ? 'unverified' : 'verified'
-                }`,
+                message,
                 type: 'success'
             });
             trackEvent(Submit.UserUpdateVerificationEmail);
@@ -44,10 +48,14 @@
                 .forProject(page.params.region, page.params.project)
                 .users.updatePhoneVerification($user.$id, !$user.phoneVerification);
             await invalidate(Dependencies.USER);
+
+            const isVerified = !$user.phoneVerification;
+            const subject = $user.name ? `for ${$user.name} ` : '';
+            const action = isVerified ? 'has been verified' : 'is no longer verified';
+            const message = `The phone ${subject}${action}`.trim();
+
             addNotification({
-                message: `${$user.name || $user.email || $user.phone || 'The account'} has been ${
-                    $user.phoneVerification ? 'unverified' : 'verified'
-                }`,
+                message,
                 type: 'success'
             });
             trackEvent(Submit.UserUpdateVerificationPhone);
