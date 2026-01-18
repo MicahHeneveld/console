@@ -34,12 +34,12 @@
 
     async function verifyStatus() {
         try {
-            domain = await sdk.forConsole.domains.updateNameservers(domain.$id);
+            domain = await sdk.forConsole.domains.updateNameservers({ domainId: domain.$id });
             verified = domain.nameservers.toLowerCase() === 'appwrite';
             if (verified) {
                 addNotification({
                     type: 'success',
-                    message: 'Domain verified'
+                    message: 'Domain verified successfully'
                 });
 
                 await goto(routeBase);
@@ -76,7 +76,7 @@
                 {#if verified === false}
                     <Badge
                         variant="secondary"
-                        type="warning"
+                        type="error"
                         size="xs"
                         content="Verification failed" />
                 {:else if verified === true}
@@ -85,7 +85,7 @@
             </Layout.Stack>
             <Typography.Text variant="m-400">
                 Add the following nameservers on your DNS provider. Note that DNS changes may take
-                time to propagate fully.
+                up to 48 hours to propagate fully.
             </Typography.Text>
         </Layout.Stack>
 

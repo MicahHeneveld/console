@@ -29,18 +29,23 @@
     async function retryDomain() {
         try {
             error = null;
-            const domain = await sdk.forConsole.domains.updateNameservers(selectedDomain.$id);
-            if (domain.nameservers.toLowerCase() === 'appwrite') {
-                show = false;
-                addNotification({
-                    type: 'success',
-                    message: `${selectedDomain.domain} has been verified`
-                });
-            } else {
-                error =
-                    'Domain verification failed. Please check your domain settings or try again later';
-            }
+            const domain = await sdk.forConsole.domains.updateNameservers({
+                domainId: selectedDomain.$id
+            });
+
             await Promise.all([invalidate(Dependencies.DOMAIN), invalidate(Dependencies.DOMAINS)]);
+
+            const verified = domain?.nameservers.toLowerCase() === 'appwrite';
+            if (!verified) {
+                throw new Error(
+                    'Domain verification failed. Please check your domain settings or try again later'
+                );
+            }
+            show = false;
+            addNotification({
+                type: 'success',
+                message: 'Domain verified successfully'
+            });
             trackEvent(Submit.DomainUpdateVerification);
         } catch (e) {
             error = e.message;
@@ -62,8 +67,8 @@
                 >{selectedDomain.domain}</Typography.Text>
         </Layout.Stack>
         <Typography.Text variant="m-400">
-            Add the following nameservers on your DNS provider. Note that DNS changes may take time
-            to propagate fully.
+            Add the following nameservers on your DNS provider. Note that DNS changes may take up to
+            48 hours to propagate fully.
         </Typography.Text>
     </Layout.Stack>
 

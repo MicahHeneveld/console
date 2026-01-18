@@ -45,9 +45,10 @@
     async function request() {
         if (!show) return;
         isLoading = true;
-        results = await sdk
-            .forProject(page.params.region, page.params.project)
-            .teams.list([Query.limit(5), Query.offset(offset)], search || undefined);
+        results = await sdk.forProject(page.params.region, page.params.project).teams.list({
+            queries: [Query.limit(5), Query.offset(offset)],
+            search: search || undefined
+        });
         isLoading = false;
     }
 
@@ -140,7 +141,7 @@
         </div>
     {:else}
         <Card.Base padding="none">
-            <Empty title="You have no teams. Create a team to see them here." type="secondary">
+            <Empty title="No teams yet. Create a team to see it here." type="secondary">
                 <Typography.Text slot="description">
                     Need a hand? Learn more in our <Link.Anchor
                         href="https://appwrite.io/docs/products/auth/teams"

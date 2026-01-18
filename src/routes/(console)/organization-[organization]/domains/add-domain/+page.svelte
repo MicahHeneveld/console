@@ -1,6 +1,7 @@
 <script lang="ts">
     import { base } from '$app/paths';
     import { page } from '$app/state';
+    import { goto } from '$app/navigation';
     import { Button, Form } from '$lib/elements/forms';
     import { InputDomain } from '$lib/elements/forms/index.js';
     import { Wizard } from '$lib/layout';
@@ -19,11 +20,20 @@
 
     async function addDomain() {
         try {
-            domain = await sdk.forConsole.domains.create(
-                page.params.organization,
-                domainName.toLocaleLowerCase()
-            );
-            invalidate(Dependencies.DOMAINS);
+            domain = await sdk.forConsole.domains.create({
+                teamId: page.params.organization,
+                domain: domainName.toLocaleLowerCase()
+            });
+
+            await invalidate(Dependencies.DOMAINS);
+            const verified = domain.nameservers.toLowerCase() === 'appwrite';
+            if (verified) {
+                await goto(backPage);
+                addNotification({
+                    type: 'success',
+                    message: 'Domain verified successfully'
+                });
+            }
         } catch (error) {
             addNotification({
                 type: 'error',

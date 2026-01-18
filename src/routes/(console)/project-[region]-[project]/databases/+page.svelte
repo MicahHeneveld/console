@@ -2,9 +2,9 @@
     import { goto } from '$app/navigation';
     import { base } from '$app/paths';
     import { page } from '$app/state';
-    import { Empty, PaginationWithLimit, SearchQuery, ViewSelector } from '$lib/components';
+    import { Empty, PaginationWithLimit } from '$lib/components';
     import { Button } from '$lib/elements/forms';
-    import { Container } from '$lib/layout';
+    import { Container, ResponsiveContainerHeader } from '$lib/layout';
     import type { Models } from '@appwrite.io/console';
 
     import type { PageData } from './$types';
@@ -14,14 +14,15 @@
     import Table from './table.svelte';
     import { registerCommands } from '$lib/commandCenter';
     import { canWriteDatabases } from '$lib/stores/roles';
-    import { Icon, Layout } from '@appwrite.io/pink-svelte';
+    import { Icon, Tooltip } from '@appwrite.io/pink-svelte';
     import { IconPlus } from '@appwrite.io/pink-icons-svelte';
     import EmptySearch from '$lib/components/emptySearch.svelte';
+    import { isServiceLimited } from '$lib/stores/billing';
+    import { organization } from '$lib/stores/organization';
 
     export let data: PageData;
 
     let showCreate = false;
-    let isCreationDisabled = false;
     const project = page.params.project;
 
     async function handleCreate(event: CustomEvent<Models.Database>) {
@@ -31,6 +32,8 @@
         );
     }
 
+    $: isLimited = isServiceLimited('databases', $organization?.billingPlan, data.databases.total);
+
     $: $registerCommands([
         {
             label: 'Create database',
@@ -38,7 +41,7 @@
                 showCreate = true;
             },
             keys: ['c'],
-            disabled: showCreate || isCreationDisabled || !$canWriteDatabases,
+            disabled: showCreate || !$canWriteDatabases || isLimited,
             icon: IconPlus,
             group: 'databases',
             rank: 10
@@ -47,33 +50,38 @@
 </script>
 
 <Container>
-    <Layout.Stack direction="row" justifyContent="space-between">
-        <Layout.Stack direction="row" alignItems="center">
-            <SearchQuery placeholder="Search by name or ID" />
-        </Layout.Stack>
-        <Layout.Stack direction="row" alignItems="center" justifyContent="flex-end">
-            <ViewSelector
-                {columns}
-                view={data.view}
-                hideColumns={!data.databases.total}
-                hideView={!data.databases.total} />
-            {#if $canWriteDatabases}
-                <Button
-                    on:click={() => (showCreate = true)}
-                    event="create_database"
-                    disabled={isCreationDisabled}>
-                    <Icon icon={IconPlus} slot="start" size="s" />
-                    Create database
-                </Button>
-            {/if}
-        </Layout.Stack>
-    </Layout.Stack>
+    <ResponsiveContainerHeader
+        hasSearch
+        {columns}
+        bind:view={data.view}
+        searchPlaceholder="Search by name or ID">
+        {#if $canWriteDatabases}
+            <Tooltip disabled={!isLimited}>
+                <div>
+                    <Button
+                        disabled={isLimited}
+                        event="create_database"
+                        on:click={() => (showCreate = true)}>
+                        <Icon icon={IconPlus} slot="start" size="s" />
+                        Create database
+                    </Button>
+                </div>
+                <svelte:fragment slot="tooltip">
+                    You have reached the maximum number of databases for your plan.
+                </svelte:fragment>
+            </Tooltip>
+        {/if}
+    </ResponsiveContainerHeader>
 
     {#if data.databases.total}
         {#if data.view === 'grid'}
             <Grid {data} bind:showCreate />
         {:else}
-            <Table {data} />
+            <Table
+                tables={data.tables}
+                policies={data.policies}
+                databases={data.databases}
+                lastBackups={data.lastBackups} />
         {/if}
 
         <PaginationWithLimit

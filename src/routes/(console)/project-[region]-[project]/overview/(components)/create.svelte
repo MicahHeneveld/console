@@ -15,6 +15,7 @@
     import { writable } from 'svelte/store';
     import Scopes from '../api-keys/scopes.svelte';
     import { page } from '$app/state';
+    import { copy } from '$lib/helpers/copy';
 
     const projectId = page.params.project;
 
@@ -23,17 +24,17 @@
     let isSubmitting = writable(false);
 
     let scopes: string[] = [];
-    let name = '',
-        expire = '';
+    let name = '';
+    let expire: string | null = null;
 
     async function create() {
         try {
-            const { $id } = await sdk.forConsole.projects.createKey(
+            const { $id, secret } = await sdk.forConsole.projects.createKey({
                 projectId,
                 name,
                 scopes,
-                expire || undefined
-            );
+                expire: expire || undefined
+            });
 
             if ($onboarding) {
                 await invalidate(Dependencies.PROJECT);
@@ -45,7 +46,21 @@
             );
             addNotification({
                 message: `API key has been created`,
-                type: 'success'
+                type: 'success',
+                buttons: [
+                    {
+                        name: 'Copy API key',
+                        method: async () => {
+                            await copy(secret);
+                        }
+                    },
+                    {
+                        name: 'Copy endpoint',
+                        method: async () => {
+                            await copy(sdk.forConsole.client.config.endpoint);
+                        }
+                    }
+                ]
             });
         } catch (error) {
             addNotification({

@@ -3,21 +3,22 @@
     import { toLocaleDate } from '$lib/helpers/date';
     import { Layout, Typography } from '@appwrite.io/pink-svelte';
     import { sdk } from '$lib/stores/sdk';
-    import { SiteUsageRange } from '@appwrite.io/console';
+    import { UsageRange } from '@appwrite.io/console';
     import { onMount } from 'svelte';
     import { page } from '$app/state';
     import { UsageCard } from '$lib/components';
     import { humanFileSize } from '$lib/helpers/sizeConvertion';
     import { formatTimeDetailed } from '$lib/helpers/timeConversion';
+    import { clampMin } from '$lib/helpers/numbers';
 
     const now = new Date();
     const rangeOptions = [
-        { value: SiteUsageRange.TwentyFourHours, label: 'Last 24 hours' },
-        { value: SiteUsageRange.ThirtyDays, label: 'Last 30 days' },
-        { value: SiteUsageRange.NinetyDays, label: 'Last 90 days' }
+        { value: UsageRange.TwentyFourHours, label: 'Last 24 hours' },
+        { value: UsageRange.ThirtyDays, label: 'Last 30 days' },
+        { value: UsageRange.NinetyDays, label: 'Last 90 days' }
     ];
 
-    let range = SiteUsageRange.ThirtyDays;
+    let range = UsageRange.ThirtyDays;
     let metrics: { id: string; value: string | null; description: string }[] = [
         {
             id: 'buildsTotal',
@@ -66,7 +67,10 @@
             try {
                 const usage = await sdk
                     .forProject(page.params.region, page.params.project)
-                    .sites.getUsage(page.params.site, range);
+                    .sites.getUsage({
+                        siteId: page.params.site,
+                        range
+                    });
                 metrics = metrics.map((metric) => {
                     if (metric.id === 'buildsStorageTotal') {
                         const size = humanFileSize(usage[metric.id]);
@@ -81,7 +85,10 @@
 
                         metric.value = time !== '0s' ? time : '-';
                     } else {
-                        metric.value = usage[metric.id] ?? '-';
+                        metric.value =
+                            usage[metric.id] !== undefined
+                                ? clampMin(usage[metric.id]).toString()
+                                : '-';
                     }
                     return metric;
                 });
@@ -95,7 +102,7 @@
 <Layout.Stack gap="xl">
     <Layout.Stack direction="row" justifyContent="space-between" alignItems="flex-end" wrap="wrap">
         <Typography.Text variant="m-400" color="--fgcolor-neutral-tertiary">
-            Metrics for {range !== SiteUsageRange.TwentyFourHours
+            Metrics for {range !== UsageRange.TwentyFourHours
                 ? `${toLocaleDate(
                       new Date(
                           now.getTime() - parseInt(range.split('d')[0]) * 24 * 60 * 60 * 1000

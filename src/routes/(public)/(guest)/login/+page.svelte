@@ -21,7 +21,10 @@
     async function login() {
         try {
             disabled = true;
-            await sdk.forConsole.account.createEmailPasswordSession(mail, pass);
+            await sdk.forConsole.account.createEmailPasswordSession({
+                email: mail,
+                password: pass
+            });
 
             if ($user) {
                 trackEvent(Submit.AccountLogin, { mfa_used: 'none' });
@@ -73,12 +76,12 @@
                 url = `${base}${page.url.search ?? ''}`;
             }
         }
-        sdk.forConsole.account.createOAuth2Session(
-            OAuthProvider.Github,
-            window.location.origin + url,
-            window.location.origin,
-            ['read:user', 'user:email']
-        );
+        sdk.forConsole.account.createOAuth2Session({
+            provider: OAuthProvider.Github,
+            success: window.location.origin + url,
+            failure: window.location.origin,
+            scopes: ['read:user', 'user:email']
+        });
     }
 </script>
 
@@ -91,6 +94,15 @@
     <svelte:fragment>
         <Form onSubmit={login}>
             <Layout.Stack>
+                {#if isCloud}
+                    <div style:margin-bottom="var(--gap-s, 8px)">
+                        <Button secondary fullWidth on:click={onGithubLogin} {disabled}>
+                            <span class="icon-github" aria-hidden="true"></span>
+                            <span class="text">Sign in with GitHub</span>
+                        </Button>
+                    </div>
+                    <span class="with-separators eyebrow-heading-3">or</span>
+                {/if}
                 <InputEmail
                     id="email"
                     label="Email"
@@ -105,13 +117,6 @@
                     required={true}
                     bind:value={pass} />
                 <Button fullWidth submit {disabled}>Sign in</Button>
-                {#if isCloud}
-                    <span class="with-separators eyebrow-heading-3">or</span>
-                    <Button secondary fullWidth on:click={onGithubLogin} {disabled}>
-                        <span class="icon-github" aria-hidden="true"></span>
-                        <span class="text">Sign in with GitHub</span>
-                    </Button>
-                {/if}
             </Layout.Stack>
         </Form>
     </svelte:fragment>

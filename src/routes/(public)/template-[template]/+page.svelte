@@ -45,19 +45,22 @@
     }
 
     function onGithubLogin() {
-        sdk.forConsole.account.createOAuth2Session(
-            OAuthProvider.Github,
-            window.location.origin,
-            window.location.origin,
-            ['read:user', 'user:email']
-        );
+        sdk.forConsole.account.createOAuth2Session({
+            provider: OAuthProvider.Github,
+            success: window.location.origin,
+            failure: window.location.origin,
+            scopes: ['read:user', 'user:email']
+        });
     }
 
     async function fetchProjects() {
-        projects = await sdk.forConsole.projects.list([
-            Query.equal('teamId', selectedOrg),
-            Query.orderDesc('')
-        ]);
+        projects = await sdk.forConsole.projects.list({
+            queries: [
+                Query.equal('teamId', selectedOrg),
+                Query.orderDesc(''),
+                Query.select(['$id', 'name', 'region'])
+            ]
+        });
         selectedProject = projects?.total ? projects.projects[0].$id : null;
     }
 
@@ -72,12 +75,12 @@
     async function handleSubmit() {
         if (selectedProject === null) {
             try {
-                const p = await sdk.forConsole.projects.create(
-                    id ?? ID.unique(),
-                    projectName,
-                    selectedOrg,
-                    isCloud ? (region as Region) : undefined
-                );
+                const p = await sdk.forConsole.projects.create({
+                    projectId: id ?? ID.unique(),
+                    name: projectName,
+                    teamId: selectedOrg,
+                    region: isCloud ? (region as Region) : undefined
+                });
                 trackEvent(Submit.ProjectCreate, {
                     customId: !!id,
                     selectedOrg,
@@ -181,9 +184,9 @@
                                         label="Project"
                                         required
                                         options={[
-                                            ...projects.projects.map((p) => ({
-                                                label: p.name,
-                                                value: p.$id
+                                            ...projects.projects.map((project) => ({
+                                                label: project.name,
+                                                value: project.$id
                                             })),
                                             {
                                                 label: 'Create project',

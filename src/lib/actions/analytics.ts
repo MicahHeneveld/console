@@ -1,40 +1,40 @@
 import Analytics, { type AnalyticsPlugin } from 'analytics';
-import Plausible from 'plausible-tracker';
+import { init, track } from '@plausible-analytics/tracker';
 import { get } from 'svelte/store';
 import { page } from '$app/state';
 import { user } from '$lib/stores/user';
 import { ENV, MODE, VARS, isCloud } from '$lib/system';
 import { AppwriteException } from '@appwrite.io/console';
 import { browser } from '$app/environment';
-import { getReferrerAndUtmSource } from '$lib/helpers/utm';
+import { getReferrerAndUtmSource, getTrackedQueryParams } from '$lib/helpers/utm';
 
 function plausible(domain: string): AnalyticsPlugin {
     if (!browser) return { name: 'analytics-plugin-plausible' };
 
-    const instance = Plausible({
-        domain
+    init({
+        domain,
+        autoCapturePageviews: false
     });
 
     return {
         name: 'analytics-plugin-plausible',
         page: ({ payload }) => {
-            instance.trackPageview({
+            track('pageview', {
                 url: payload.properties.path,
-                referrer: payload.properties.referrer,
-                deviceWidth: payload.properties.width
+                props: {
+                    referrer: payload.properties.referrer,
+                    deviceWidth: String(payload.properties.width)
+                }
             });
         },
         track: ({ payload }) => {
-            instance.trackEvent(
-                payload.event,
-                {
-                    props: payload.properties
-                },
-                {
-                    url: payload.properties.path,
-                    deviceWidth: payload.properties.width
+            track(payload.event, {
+                url: payload.properties.path,
+                props: {
+                    ...payload.properties,
+                    deviceWidth: String(payload.properties.width)
                 }
-            );
+            });
         },
         loaded: () => true
     };
@@ -65,7 +65,7 @@ export function trackEvent(name: string, data: object = null): void {
         };
     }
 
-    data = { ...data, ...getReferrerAndUtmSource() };
+    data = { ...data, ...getReferrerAndUtmSource(), ...getTrackedQueryParams() };
 
     if (ENV.DEV || ENV.PREVIEW) {
         console.debug(`[Analytics] Event ${name} ${path}`, data);
@@ -148,9 +148,9 @@ export enum Click {
     ConnectRepositoryClick = 'click_connect_repository',
     CreditsRedeemClick = 'click_credits_redeem',
     CloudSignupClick = 'click_cloud_signup',
-    DatabaseAttributeDelete = 'click_attribute_delete',
+    DatabaseColumnDelete = 'click_column_delete',
     DatabaseIndexDelete = 'click_index_delete',
-    DatabaseCollectionDelete = 'click_collection_delete',
+    DatabaseTableDelete = 'click_table_delete',
     DatabaseDatabaseDelete = 'click_database_delete',
     DatabaseImportCsv = 'click_database_import_csv',
     DomainCreateClick = 'click_domain_create',
@@ -195,7 +195,10 @@ export enum Click {
     VariablesCreateClick = 'click_variable_create',
     VariablesUpdateClick = 'click_variable_update',
     VariablesImportClick = 'click_variable_import',
-    WebsiteOpenClick = 'click_open_website'
+    WebsiteOpenClick = 'click_open_website',
+    CopyPromptStarterKitClick = 'click_copy_prompt_starter_kit',
+    OpenInCursorClick = 'click_open_in_cursor',
+    OpenInLovableClick = 'click_open_in_lovable'
 }
 
 export enum Submit {
@@ -244,6 +247,7 @@ export enum Submit {
     ProjectDelete = 'submit_project_delete',
     ProjectUpdateName = 'submit_project_update_name',
     ProjectUpdateTeam = 'submit_project_update_team',
+    ProjectUpdateLabels = 'submit_project_update_labels',
     ProjectService = 'submit_project_service',
     ProjectUpdateSMTP = 'submit_project_update_smtp',
     MemberCreate = 'submit_member_create',
@@ -265,6 +269,7 @@ export enum Submit {
     AuthSessionAlertsUpdate = 'submit_auth_session_alerts_update',
     AuthMembershipPrivacyUpdate = 'submit_auth_membership_privacy_update',
     AuthMockNumbersUpdate = 'submit_auth_mock_numbers_update',
+    AuthInvalidateSession = 'submit_auth_invalidate_session',
     SessionsLengthUpdate = 'submit_sessions_length_update',
     SessionsLimitUpdate = 'submit_sessions_limit_update',
     SessionDelete = 'submit_session_delete',
@@ -273,22 +278,26 @@ export enum Submit {
     DatabaseDelete = 'submit_database_delete',
     DatabaseUpdateName = 'submit_database_update_name',
     DatabaseImportCsv = 'submit_database_import_csv',
-    AttributeCreate = 'submit_attribute_create',
-    AttributeUpdate = 'submit_attribute_update',
-    AttributeDelete = 'submit_attribute_delete',
-    DocumentCreate = 'submit_document_create',
-    DocumentDelete = 'submit_document_delete',
-    DocumentUpdate = 'submit_document_update',
-    DocumentUpdatePermissions = 'submit_document_update_permissions',
+    DatabaseBackupDelete = 'submit_database_backup_delete',
+
+    ColumnCreate = 'submit_column_create',
+    ColumnUpdate = 'submit_column_update',
+    ColumnDelete = 'submit_column_delete',
+    ColumnSuggestions = 'submit_column_suggestions',
+
+    RowCreate = 'submit_row_create',
+    RowDelete = 'submit_row_delete',
+    RowUpdate = 'submit_row_update',
+    RowUpdatePermissions = 'submit_row_update_permissions',
     IndexCreate = 'submit_index_create',
     IndexDelete = 'submit_index_delete',
-    CollectionCreate = 'submit_collection_create',
-    CollectionDelete = 'submit_collection_delete',
-    CollectionUpdateName = 'submit_collection_update_name',
-    CollectionUpdatePermissions = 'submit_collection_update_permissions',
-    CollectionUpdateSecurity = 'submit_collection_update_security',
-    CollectionUpdateEnabled = 'submit_collection_update_enabled',
-    CollectionUpdateDisplayNames = 'submit_collection_update_display_names',
+    TableCreate = 'submit_row_create',
+    TableDelete = 'submit_row_delete',
+    TableUpdateName = 'submit_row_update_name',
+    TableUpdatePermissions = 'submit_row_update_permissions',
+    TableUpdateSecurity = 'submit_row_update_security',
+    TableUpdateEnabled = 'submit_row_update_enabled',
+    TableUpdateDisplayNames = 'submit_row_update_display_names',
     FunctionCreate = 'submit_function_create',
     FunctionDelete = 'submit_function_delete',
     FunctionUpdateName = 'submit_function_update_name',
@@ -353,6 +362,7 @@ export enum Submit {
     BucketUpdateSize = 'submit_bucket_update_size',
     BucketUpdateCompression = 'submit_bucket_update_compression',
     BucketUpdateExtensions = 'submit_bucket_update_extensions',
+    BucketUpdateTransformations = 'submit_bucket_update_transformations',
     FileCreate = 'submit_file_create',
     FileDelete = 'submit_file_delete',
     FileUpdatePermissions = 'submit_file_update_permissions',
@@ -428,5 +438,6 @@ export enum Submit {
     RecordUpdate = 'submit_dns_record_update',
     RecordDelete = 'submit_dns_record_delete',
     SearchClear = 'submit_clear_search',
-    FrameworkDetect = 'submit_framework_detect'
+    FrameworkDetect = 'submit_framework_detect',
+    TestimonialView = 'testimonial_view'
 }

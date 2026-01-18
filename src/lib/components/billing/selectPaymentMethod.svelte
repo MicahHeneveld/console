@@ -18,14 +18,14 @@
     let showTaxId = false;
     let showPaymentModal = false;
 
-    async function cardSaved(event: CustomEvent<PaymentMethodData>) {
-        value = event.detail.$id;
+    async function cardSaved(card: PaymentMethodData) {
+        value = card.$id;
 
         if (value) {
             methods = {
                 ...methods,
                 total: methods.total + 1,
-                paymentMethods: [...methods.paymentMethods, event.detail]
+                paymentMethods: [...methods.paymentMethods, card]
             };
         }
 
@@ -78,7 +78,7 @@
         </Layout.Stack>
     {:else}
         <Card.Base variant="secondary" radius="s" padding="xs">
-            <Layout.Stack direction="row">
+            <Layout.Stack direction="row" id="no-payments-card-stack">
                 <Layout.Stack direction="row" gap="xxs" alignItems="center">
                     <Icon
                         icon={IconExclamationCircle}
@@ -98,7 +98,7 @@
 </Layout.Stack>
 
 {#if showPaymentModal && isCloud && hasStripePublicKey}
-    <PaymentModal bind:show={showPaymentModal} on:submit={cardSaved}>
+    <PaymentModal bind:show={showPaymentModal} onCardSubmit={cardSaved}>
         <svelte:fragment slot="end">
             <Selector.Checkbox
                 id="taxIdCheck"

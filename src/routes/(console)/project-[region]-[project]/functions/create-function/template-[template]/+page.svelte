@@ -15,7 +15,7 @@
     import { writable } from 'svelte/store';
     import ProductionBranch from '$lib/components/git/productionBranchFieldset.svelte';
     import Configuration from './configuration.svelte';
-    import { ID, Runtime, type Models } from '@appwrite.io/console';
+    import { ID, Runtime, TemplateReferenceType, type Models } from '@appwrite.io/console';
     import {
         ConnectBehaviour,
         NewRepository,
@@ -34,7 +34,7 @@
 
     export let data;
 
-    const specificationOptions = data.specificationsList.specifications.map((size) => ({
+    const specificationOptions = (data.specificationsList?.specifications ?? []).map((size) => ({
         label:
             `${size.cpus} CPU, ${size.memory} MB RAM` +
             (!size.enabled ? ` (Upgrade to use this)` : ''),
@@ -49,7 +49,7 @@
     let isSubmitting = writable(false);
 
     let name = data.template.name;
-    let id: string;
+    let id: string | null = null;
     let runtime: Runtime;
     let branch = 'main';
     let rootDir = './';
@@ -65,7 +65,7 @@
     let selectedScopes: string[] = [];
     let execute = true;
     let variables: Partial<Models.TemplateVariable>[] = [];
-    let specification = specificationOptions[0].value;
+    let specification = specificationOptions[0]?.value || '';
 
     onMount(async () => {
         if (!$installation?.$id) {
@@ -96,7 +96,11 @@
             isCreatingRepository = true;
             const repo = await sdk
                 .forProject(page.params.region, page.params.project)
-                .vcs.createRepository($installation.$id, repositoryName, repositoryPrivate);
+                .vcs.createRepository({
+                    installationId: $installation.$id,
+                    name: repositoryName,
+                    xprivate: repositoryPrivate
+                });
             repository.set(repo);
             selectedRepository = repo.id;
             showConfig = true;
@@ -123,60 +127,62 @@
 
                 const func = await sdk
                     .forProject(page.params.region, page.params.project)
-                    .functions.create(
-                        id || ID.unique(),
+                    .functions.create({
+                        functionId: id || ID.unique(),
                         name,
-                        runtime as Runtime,
-                        execute && data.template.permissions?.length
-                            ? data.template.permissions
-                            : undefined,
-                        data.template.events?.length ? data.template.events : undefined,
-                        data.template.cron || undefined,
-                        data.template.timeout ? data.template.timeout : undefined,
-                        undefined,
-                        undefined,
-                        entrypoint || rt?.entrypoint || undefined,
-                        rt?.commands || undefined,
-                        selectedScopes?.length ? selectedScopes : undefined,
-                        connectBehaviour === 'later' ? undefined : $installation?.$id || undefined,
-                        connectBehaviour === 'later' ? undefined : $repository?.id || undefined,
-                        branch,
-                        silentMode,
-                        rootDir,
-                        specification || undefined
-                    );
+                        runtime: runtime as Runtime,
+                        execute:
+                            execute && data.template.permissions?.length
+                                ? data.template.permissions
+                                : undefined,
+                        events: data.template.events?.length ? data.template.events : undefined,
+                        schedule: data.template.cron || undefined,
+                        timeout: data.template.timeout || undefined,
+                        entrypoint: entrypoint || rt?.entrypoint || undefined,
+                        commands: rt?.commands || undefined,
+                        scopes: selectedScopes?.length ? selectedScopes : undefined,
+                        installationId:
+                            connectBehaviour === 'later' ? undefined : $installation?.$id,
+                        providerRepositoryId:
+                            connectBehaviour === 'later' ? undefined : $repository?.id,
+                        providerBranch: branch,
+                        providerSilentMode: silentMode,
+                        providerRootDirectory: rootDir,
+                        specification: specification || undefined
+                    });
 
                 // Add domain
                 await sdk
                     .forProject(page.params.region, page.params.project)
-                    .proxy.createFunctionRule(
-                        `${ID.unique()}.${$regionalConsoleVariables._APP_DOMAIN_FUNCTIONS}`,
-                        func.$id
-                    );
+                    .proxy.createFunctionRule({
+                        domain: `${ID.unique()}.${$regionalConsoleVariables._APP_DOMAIN_FUNCTIONS}`,
+                        functionId: func.$id
+                    });
 
                 // Add variables
                 const promises = variables.map((variable) =>
                     sdk
                         .forProject(page.params.region, page.params.project)
-                        .functions.createVariable(
-                            func.$id,
-                            variable.name,
-                            variable.value,
-                            variable?.secret ?? false
-                        )
+                        .functions.createVariable({
+                            functionId: func.$id,
+                            key: variable.name,
+                            value: variable.value,
+                            secret: variable?.secret ?? false
+                        })
                 );
                 await Promise.all(promises);
 
                 await sdk
                     .forProject(page.params.region, page.params.project)
-                    .functions.createTemplateDeployment(
-                        func.$id,
-                        data.template.providerRepositoryId || undefined,
-                        data.template.providerOwner || undefined,
-                        rt?.providerRootDirectory || undefined,
-                        data.template.providerVersion || undefined,
-                        true
-                    );
+                    .functions.createTemplateDeployment({
+                        functionId: func.$id,
+                        repository: data.template.providerRepositoryId || undefined,
+                        owner: data.template.providerOwner || undefined,
+                        rootDirectory: rt?.providerRootDirectory || undefined,
+                        type: TemplateReferenceType.Tag,
+                        reference: data.template.providerVersion || undefined,
+                        activate: true
+                    });
 
                 trackEvent(Submit.FunctionCreate, {
                     runtime: runtime,

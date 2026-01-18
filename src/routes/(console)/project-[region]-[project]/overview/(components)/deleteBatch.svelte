@@ -27,8 +27,14 @@
             await Promise.all(
                 keyIds.map((key) =>
                     isApiKey
-                        ? sdk.forConsole.projects.deleteKey(projectId, key)
-                        : sdk.forConsole.projects.deleteDevKey(projectId, key)
+                        ? sdk.forConsole.projects.deleteKey({
+                              projectId,
+                              keyId: key
+                          })
+                        : sdk.forConsole.projects.deleteDevKey({
+                              projectId,
+                              keyId: key
+                          })
                 )
             );
 
@@ -53,7 +59,12 @@
     }
 </script>
 
-<Confirm onSubmit={handleDelete} title={`Delete ${label} key`} bind:open={showDelete} bind:error>
+<Confirm
+    bind:error
+    bind:open={showDelete}
+    submissionLoader
+    onSubmit={handleDelete}
+    title={`Delete ${label} key${keyIds.length > 1 ? 's' : ''}`}>
     <p>
         Are you sure you want to delete <b>{keyIds.length}</b>
         {label} key{keyIds.length > 1 ? 's' : ''}?

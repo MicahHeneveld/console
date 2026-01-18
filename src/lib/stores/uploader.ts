@@ -1,4 +1,4 @@
-import { Client, type Models, Sites, Storage } from '@appwrite.io/console';
+import { Client, Functions, ID, type Models, Sites, Storage } from '@appwrite.io/console';
 import { writable } from 'svelte/store';
 import { getApiEndpoint } from '$lib/stores/sdk';
 import { page } from '$app/state';
@@ -30,6 +30,13 @@ const temporarySites = (region: string, projectId: string) => {
     const endpoint = getApiEndpoint(region);
     clientProject.setEndpoint(endpoint).setProject(projectId);
     return new Sites(clientProject);
+};
+
+const temporaryFunctions = (region: string, projectId: string) => {
+    const clientProject = new Client().setMode('admin');
+    const endpoint = getApiEndpoint(region);
+    clientProject.setEndpoint(endpoint).setProject(projectId);
+    return new Functions(clientProject);
 };
 
 const createUploader = () => {
@@ -93,24 +100,36 @@ const createUploader = () => {
                 n.files.unshift(newFile);
                 return n;
             });
-            const uploadedFile = await temporaryStorage(region, projectId).createFile(
+            const uploadedFile = await temporaryStorage(region, projectId).createFile({
                 bucketId,
-                id ?? 'unique()',
+                fileId: id ?? ID.unique(),
                 file,
                 permissions,
-                (p) => {
-                    newFile.$id = p.$id;
-                    newFile.progress = p.progress;
-                    newFile.status = p.progress === 100 ? 'success' : 'pending';
-                    updateFile(p.$id, newFile);
+                onProgress: (progress) => {
+                    newFile.$id = progress.$id;
+                    newFile.progress = progress.progress;
+                    newFile.status = progress.progress === 100 ? 'success' : 'pending';
+                    updateFile(progress.$id, newFile);
                 }
-            );
+            });
             newFile.$id = uploadedFile.$id;
             newFile.progress = 100;
             newFile.status = 'success';
             updateFile(newFile.$id, newFile);
         },
-        uploadSiteDeployment: async (siteId: string, code: File) => {
+        uploadSiteDeployment: async ({
+            siteId,
+            code,
+            buildCommand,
+            installCommand,
+            outputDirectory
+        }: {
+            siteId: string;
+            code: File;
+            buildCommand?: string;
+            installCommand?: string;
+            outputDirectory?: string;
+        }) => {
             const newDeployment: UploaderFile = {
                 $id: '',
                 resourceId: siteId,
@@ -128,11 +147,59 @@ const createUploader = () => {
             const uploadedFile = await temporarySites(
                 page.params.region,
                 page.params.project
-            ).createDeployment(siteId, code, true, undefined, undefined, undefined, (p) => {
-                newDeployment.$id = p.$id;
-                newDeployment.progress = p.progress;
-                newDeployment.status = p.progress === 100 ? 'success' : 'pending';
-                updateFile(p.$id, newDeployment);
+            ).createDeployment({
+                siteId,
+                code,
+                activate: true,
+                buildCommand,
+                installCommand,
+                outputDirectory,
+                onProgress: (progress) => {
+                    newDeployment.$id = progress.$id;
+                    newDeployment.progress = progress.progress;
+                    newDeployment.status = progress.progress === 100 ? 'success' : 'pending';
+                    updateFile(progress.$id, newDeployment);
+                }
+            });
+            newDeployment.$id = uploadedFile.$id;
+            newDeployment.progress = 100;
+            newDeployment.status = 'success';
+            updateFile(newDeployment.$id, newDeployment);
+        },
+        uploadFunctionDeployment: async ({
+            functionId,
+            code
+        }: {
+            functionId: string;
+            code: File;
+        }) => {
+            const newDeployment: UploaderFile = {
+                $id: '',
+                resourceId: functionId,
+                name: code.name,
+                size: code.size,
+                progress: 0,
+                status: 'pending'
+            };
+            update((n) => {
+                n.isOpen = true;
+                n.isCollapsed = false;
+                n.files.unshift(newDeployment);
+                return n;
+            });
+            const uploadedFile = await temporaryFunctions(
+                page.params.region,
+                page.params.project
+            ).createDeployment({
+                functionId,
+                code,
+                activate: true,
+                onProgress: (progress) => {
+                    newDeployment.$id = progress.$id;
+                    newDeployment.progress = progress.progress;
+                    newDeployment.status = progress.progress === 100 ? 'success' : 'pending';
+                    updateFile(progress.$id, newDeployment);
+                }
             });
             newDeployment.$id = uploadedFile.$id;
             newDeployment.progress = 100;

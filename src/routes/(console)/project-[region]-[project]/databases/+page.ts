@@ -4,7 +4,6 @@ import { sdk } from '$lib/stores/sdk';
 import { type Models, Query } from '@appwrite.io/console';
 import { timeFromNow } from '$lib/helpers/date';
 import type { PageLoad, RouteParams } from './$types';
-import type { BackupPolicy } from '$lib/sdk/backups';
 import { isSelfHosted } from '$lib/system';
 import { isCloud } from '$lib/system';
 import type { Plan } from '$lib/sdk/billing';
@@ -21,18 +20,20 @@ export const load: PageLoad = async ({ url, route, depends, params, parent }) =>
     // already loaded by parent.
     const { currentPlan } = await parent();
 
-    const { databases, policies, lastBackups } = await fetchDatabasesAndBackups(
+    const { databases, tables, policies, lastBackups } = await fetchDatabasesAndBackups(
         limit,
         offset,
         params,
         search,
         currentPlan
     );
+
     return {
         offset,
         limit,
         view,
         search,
+        tables,
         policies,
         databases,
         lastBackups
@@ -48,14 +49,29 @@ async function fetchDatabasesAndBackups(
 ) {
     const backupsEnabled = currentPlan?.backupsEnabled ?? true;
 
-    const databases = await sdk
-        .forProject(params.region, params.project)
-        .databases.list(
-            [Query.limit(limit), Query.offset(offset), Query.orderDesc('$createdAt')],
-            search || undefined
-        );
+    const projectSDK = sdk.forProject(params.region, params.project);
 
-    let lastBackups: Record<string, string>, policies: Record<string, BackupPolicy[]>;
+    const databases = await projectSDK.tablesDB.list({
+        queries: [Query.limit(limit), Query.offset(offset), Query.orderDesc('$createdAt')],
+        search: search || undefined
+    });
+
+    const tables: Record<string, string | null> = {};
+
+    await Promise.all(
+        // TODO: backend should allow `Query.select` for perf!
+        databases.databases.map(async ({ $id }) => {
+            const res = await projectSDK.tablesDB.listTables({
+                databaseId: $id,
+                queries: [Query.limit(1), Query.orderDesc('')]
+            });
+
+            tables[$id] = res.tables?.[0]?.$id ?? null;
+        })
+    );
+
+    let lastBackups: Record<string, string> = {};
+    let policies: Record<string, Models.BackupPolicy[]> = {};
 
     if (isCloud && backupsEnabled) {
         [policies, lastBackups] = await Promise.all([
@@ -64,25 +80,27 @@ async function fetchDatabasesAndBackups(
         ]);
     }
 
-    return { databases, policies, lastBackups };
+    return { databases, tables, policies, lastBackups };
 }
 
 async function fetchPolicies(databases: Models.DatabaseList, params: RouteParams) {
     if (isSelfHosted) return {};
 
-    const databasePolicies: Record<string, BackupPolicy[]> = {};
+    const databasePolicies: Record<string, Models.BackupPolicy[]> = {};
 
     await Promise.all(
         databases.databases.map(async (database) => {
             try {
                 const { policies } = await sdk
                     .forProject(params.region, params.project)
-                    .backups.listPolicies([
-                        // TODO: are all needed!?
-                        // Query.limit(3),
-                        Query.equal('resourceType', 'database'),
-                        Query.equal('resourceId', database.$id)
-                    ]);
+                    .backups.listPolicies({
+                        queries: [
+                            // TODO: are all needed!?
+                            // Query.limit(3),
+                            Query.equal('resourceType', 'database'),
+                            Query.equal('resourceId', database.$id)
+                        ]
+                    });
 
                 if (policies.length > 0) {
                     databasePolicies[database.$id] = policies;
@@ -106,12 +124,14 @@ async function fetchLastBackups(databases: Models.DatabaseList, params: RoutePar
             try {
                 const { archives } = await sdk
                     .forProject(params.region, params.project)
-                    .backups.listArchives([
-                        Query.limit(1),
-                        Query.orderDesc('$createdAt'),
-                        Query.equal('resourceType', 'database'),
-                        Query.equal('resourceId', database.$id)
-                    ]);
+                    .backups.listArchives({
+                        queries: [
+                            Query.limit(1),
+                            Query.orderDesc('$createdAt'),
+                            Query.equal('resourceType', 'database'),
+                            Query.equal('resourceId', database.$id)
+                        ]
+                    });
 
                 if (archives.length > 0) {
                     lastBackups[database.$id] = timeFromNow(archives[0].$createdAt);

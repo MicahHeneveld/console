@@ -1,84 +1,58 @@
 import { isCloud } from '$lib/system';
 import { isSameDay } from '$lib/helpers/date';
-import { type BottomModalAlertItem, showBottomModalAlert } from '$lib/stores/bottom-alerts';
-import AutoIncrementDark from '$lib/images/promos/auto-increment-dark.png';
-import AutoIncrementLight from '$lib/images/promos/auto-increment-light.png';
-import AtomicNumericOperationsDark from '$lib/images/promos/atomic-numeric-operations-dark.png';
-import AtomicNumericOperationsLight from '$lib/images/promos/atomic-numeric-operations-light.png';
-import AppwriteGeneralAvailabiltyLight from '$lib/images/promos/appwrite-general-availability-light.png';
-import AppwriteGeneralAvailabiltyDark from '$lib/images/promos/appwrite-general-availability-dark.png';
+import Imagine from '$lib/components/promos/imagine.svelte';
+import {
+    type BottomModalAlertItem,
+    setMobileSingleAlertLayout,
+    showBottomModalAlert
+} from '$lib/stores/bottom-alerts';
+
+const SHOW_IMAGINE_PROMO = true;
 
 const listOfPromotions: BottomModalAlertItem[] = [];
 
-if (isCloud) {
-    const appwriteGeneralAvailabiltyPromo: BottomModalAlertItem = {
-        id: 'modal:appwrite_general_availability_announcement',
-        src: {
-            dark: AppwriteGeneralAvailabiltyDark,
-            light: AppwriteGeneralAvailabiltyLight
-        },
-        title: 'Now Generally Available',
-        message: 'After 26 months of Appwrite Cloud, we are ready to remove the beta tag.',
-        plan: 'free',
+if (isCloud && SHOW_IMAGINE_PROMO) {
+    const imaginePromo: BottomModalAlertItem = {
+        id: 'modal:imagine.dev',
+        backgroundComponent: Imagine,
+        title: 'Introducing Imagine',
+        message: 'The most complete AI builder to date',
         importance: 8,
         scope: 'everywhere',
-        cta: {
-            text: 'Learn more',
-            link: () => 'https://apwr.dev/ygTXfxA',
-            external: true,
-            hideOnClick: true
-        },
-        show: true
-    };
-    const autoIncrementPromo: BottomModalAlertItem = {
-        id: 'modal:auto_increment_announcement',
-        src: {
-            dark: AutoIncrementDark,
-            light: AutoIncrementLight
-        },
-        title: 'Announcing Auto-increment support',
-        message:
-            'Get a built-in numeric identifier that increases predictably with every new document added.',
         plan: 'free',
-        importance: 8,
-        scope: 'project',
         cta: {
-            text: 'Read announcement',
-            link: () => 'https://appwrite.io/blog/post/announcing-auto-increment-support',
+            text: 'Try it now',
+            color: {
+                light: '#FFFFFF',
+                dark: '#000000'
+            },
+            background: {
+                light: '#000000',
+                dark: '#FFFFFF'
+            },
+            backgroundHover: {
+                light: '#333333',
+                dark: '#CCCCCC'
+            },
+            link: () => 'https://imagine.dev',
             external: true,
             hideOnClick: true
         },
         show: true
     };
-    const atomicNumericOperationsPromo: BottomModalAlertItem = {
-        id: 'modal:atomic_numeric_operations_announcement',
-        src: {
-            dark: AtomicNumericOperationsDark,
-            light: AtomicNumericOperationsLight
-        },
-        title: 'Announcing Atomic Numeric Operations',
-        message:
-            'Safely update numeric fields directly on the server, without conflicts or race conditions.',
-        plan: 'free',
-        importance: 8,
-        scope: 'project',
-        cta: {
-            text: 'Read announcement',
-            link: () => 'https://appwrite.io/blog/post/announcing-atomic-numeric-operations',
-            external: true,
-            hideOnClick: true
-        },
-        show: true
-    };
-    listOfPromotions.push(
-        appwriteGeneralAvailabiltyPromo,
-        atomicNumericOperationsPromo,
-        autoIncrementPromo
-    );
+
+    listOfPromotions.push(imaginePromo);
 }
 
 export function addBottomModalAlerts() {
     listOfPromotions.forEach((promotion) => showBottomModalAlert(promotion));
+
+    // only for imagine!
+    if (listOfPromotions.length > 0) {
+        const imaginePromo = listOfPromotions[0];
+        const { cta, title, message } = imaginePromo;
+        setMobileSingleAlertLayout({ enabled: true, cta, title, message });
+    }
 }
 
 // use this for time based promo handling

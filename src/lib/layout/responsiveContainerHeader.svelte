@@ -106,13 +106,13 @@
                     {#if hasSearch}
                         <SearchQuery placeholder={searchPlaceholder} />
                     {/if}
+                </Layout.Stack>
+                <Layout.Stack direction="row" alignItems="center" justifyContent="flex-end">
                     {#if hasFilters && $columns?.length}
                         <QuickFilters {columns} {analyticsSource} {filterCols} />
                     {/if}
-                </Layout.Stack>
-                <Layout.Stack direction="row" alignItems="center" justifyContent="flex-end">
                     {#if hasDisplaySettings}
-                        <ViewSelector {view} {columns} {hideView} {hideColumns} />
+                        <ViewSelector ui="new" {view} {columns} {hideView} {hideColumns} />
                     {/if}
                     {#if children}
                         {@render children()}

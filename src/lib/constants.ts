@@ -1,15 +1,23 @@
 export const PAGE_LIMIT = 12; // default page limit
+export const SPREADSHEET_PAGE_LIMIT = 50; // default sheet page limit
 export const CARD_LIMIT = 6; // default card limit
+export const DEFAULT_BILLING_PROJECTS_LIMIT = 5; // default billing projects page limit
 export const INTERVAL = 5 * 60000; // default interval to check for feedback
 export const NEW_DEV_PRO_UPGRADE_COUPON = 'appw50';
 
 export const REGION_FRA = 'fra';
 export const REGION_SYD = 'syd';
 export const REGION_NYC = 'nyc';
+export const REGION_SFO = 'sfo';
+export const REGION_SGP = 'sgp';
+export const REGION_TOR = 'tor';
 
 export const SUBDOMAIN_FRA = 'fra.';
 export const SUBDOMAIN_SYD = 'syd.';
 export const SUBDOMAIN_NYC = 'nyc.';
+export const SUBDOMAIN_SFO = 'sfo.';
+export const SUBDOMAIN_SGP = 'sgp.';
+export const SUBDOMAIN_TOR = 'tor.';
 
 export enum Dependencies {
     FACTORS = 'dependency:factors',
@@ -17,6 +25,7 @@ export enum Dependencies {
     CREDIT = 'dependency:credit',
     INVOICES = 'dependency:invoices',
     ADDRESS = 'dependency:address',
+    BILLING_AGGREGATION = 'dependency:billing_aggregation',
     UPGRADE_PLAN = 'dependency:upgrade_plan',
     ORGANIZATIONS = 'dependency:organizations',
     PAYMENT_METHODS = 'dependency:paymentMethods',
@@ -38,9 +47,9 @@ export enum Dependencies {
     MEMBERSHIPS = 'dependency:memberships',
     DATABASE = 'dependency:database',
     DATABASES = 'dependency:databases',
-    COLLECTION = 'dependency:collection',
-    DOCUMENT = 'dependency:document',
-    DOCUMENTS = 'dependency:documents',
+    TABLE = 'dependency:table',
+    ROW = 'dependency:row',
+    ROWS = 'dependency:rows',
     BUCKET = 'dependency:bucket',
     FILE = 'dependency:file',
     FILE_TOKENS = 'dependency:file_tokens',
@@ -54,7 +63,6 @@ export enum Dependencies {
     DEPLOYMENTS = 'dependency:deployments',
     EXECUTIONS = 'dependency:executions',
     PLATFORM = 'dependency:platform',
-    PLATFORMS = 'dependency:platforms',
     KEY = 'dependency:key',
     KEYS = 'dependency:keys',
     DEV_KEY = 'dependency:dev_key',
@@ -64,7 +72,7 @@ export enum Dependencies {
     WEBHOOK = 'dependency:webhook',
     WEBHOOKS = 'dependency:webhooks',
     MIGRATIONS = 'dependency:migrations',
-    COLLECTIONS = 'dependency:collections',
+    TABLES = 'dependency:tables',
     BACKUPS = 'dependency:backups',
     RUNTIMES = 'dependency:runtimes',
     CONSOLE_VARIABLES = 'dependency:console_variables',
@@ -92,6 +100,8 @@ export const defaultScopes: string[] = [
     'teams.write',
     'documents.read',
     'documents.write',
+    'rows.read',
+    'rows.write',
     'files.read',
     'files.write',
     'projects.read',
@@ -111,6 +121,8 @@ export const defaultScopes: string[] = [
     'databases.write',
     'collections.read',
     'collections.write',
+    'tables.read',
+    'tables.write',
     'buckets.read',
     'buckets.write',
     'functions.read',
@@ -141,6 +153,8 @@ export const defaultScopes: string[] = [
 
 export const defaultRoles: string[] = ['owner'];
 
+// these are kept for backwards compatibility with keys and events that already exists.
+// for the new ones, we use the new terminology.
 export const scopes: {
     scope: string;
     description: string;
@@ -202,6 +216,18 @@ export const scopes: {
         icon: 'database'
     },
     {
+        scope: 'tables.read',
+        description: "Access to read your project's database tables",
+        category: 'Database',
+        icon: 'database'
+    },
+    {
+        scope: 'tables.write',
+        description: "Access to create, update, and delete your project's database tables",
+        category: 'Database',
+        icon: 'database'
+    },
+    {
         scope: 'attributes.read',
         description: "Access to read your project's database collection's attributes",
         category: 'Database',
@@ -215,15 +241,26 @@ export const scopes: {
         icon: 'database'
     },
     {
+        scope: 'columns.read',
+        description: "Access to read your project's database table's columns",
+        category: 'Database',
+        icon: 'database'
+    },
+    {
+        scope: 'columns.write',
+        description: "Access to create, update, and delete your project's database table's columns",
+        category: 'Database',
+        icon: 'database'
+    },
+    {
         scope: 'indexes.read',
-        description: "Access to read your project's database collection's indexes",
+        description: "Access to read your project's database table's indexes",
         category: 'Database',
         icon: 'database'
     },
     {
         scope: 'indexes.write',
-        description:
-            "Access to create, update, and delete your project's database collection's indexes",
+        description: "Access to create, update, and delete your project's database table's indexes",
         category: 'Database',
         icon: 'database'
     },
@@ -236,6 +273,18 @@ export const scopes: {
     {
         scope: 'documents.write',
         description: "Access to create, update, and delete your project's database documents",
+        category: 'Database',
+        icon: 'database'
+    },
+    {
+        scope: 'rows.read',
+        description: "Access to read your project's database rows",
+        category: 'Database',
+        icon: 'database'
+    },
+    {
+        scope: 'rows.write',
+        description: "Access to create, update, and delete your project's database rows",
         category: 'Database',
         icon: 'database'
     },
@@ -417,6 +466,45 @@ export const scopes: {
     }
 ];
 
+export const cloudOnlyBackupScopes = [
+    {
+        scope: 'policies.read',
+        description: 'Access to read your database backup policies',
+        category: 'Database',
+        icon: 'database'
+    },
+    {
+        scope: 'policies.write',
+        description: 'Access to create, update and delete your backup policies',
+        category: 'Database',
+        icon: 'database'
+    },
+    {
+        scope: 'archives.read',
+        description: 'Access to read your database backup archives',
+        category: 'Database',
+        icon: 'database'
+    },
+    {
+        scope: 'archives.write',
+        description: 'Access to create and delete your backup archives',
+        category: 'Database',
+        icon: 'database'
+    },
+    {
+        scope: 'restorations.read',
+        description: 'Access to read your backup restorations',
+        category: 'Database',
+        icon: 'database'
+    },
+    {
+        scope: 'restorations.write',
+        description: 'Access to create backup restorations',
+        category: 'Database',
+        icon: 'database'
+    }
+];
+
 export type EventService = {
     name: string;
     resources: EventResource[];
@@ -430,7 +518,7 @@ export type EventResource = {
 
 export type EventAction = {
     name: string;
-    attributes?: string[];
+    columns?: string[];
 };
 
 export const eventServices: Array<EventService> = [
@@ -448,11 +536,11 @@ export const eventServices: Array<EventService> = [
         name: 'databases',
         resources: [
             {
-                name: 'collections',
+                name: 'tables',
                 actions: [{ name: 'create' }, { name: 'update' }, { name: 'delete' }]
             },
             {
-                name: 'documents',
+                name: 'rows',
                 actions: [{ name: 'create' }, { name: 'update' }, { name: 'delete' }]
             }
         ],
@@ -479,7 +567,7 @@ export const eventServices: Array<EventService> = [
                 name: 'memberships',
                 actions: [
                     { name: 'create' },
-                    { name: 'update', attributes: ['status'] },
+                    { name: 'update', columns: ['status'] },
                     { name: 'delete' }
                 ]
             }
@@ -495,7 +583,7 @@ export const eventServices: Array<EventService> = [
         ],
         actions: [
             { name: 'create' },
-            { name: 'update', attributes: ['email', 'name', 'password', 'status', 'prefs'] },
+            { name: 'update', columns: ['email', 'name', 'password', 'status', 'prefs'] },
             { name: 'delete' }
         ]
     },

@@ -2,18 +2,29 @@
     import { onMount } from 'svelte';
     import { base } from '$app/paths';
     import { page } from '$app/state';
-    import { sdk } from '$lib/stores/sdk';
     import { Dependencies } from '$lib/constants';
+    import { realtime, sdk } from '$lib/stores/sdk';
     import { goto, invalidate } from '$app/navigation';
     import { getProjectId } from '$lib/helpers/project';
-    import { writable, type Writable } from 'svelte/store';
     import { addNotification } from '$lib/stores/notifications';
-    import { Layout, Typography } from '@appwrite.io/pink-svelte';
+    import { Layout, Typography, Icon } from '@appwrite.io/pink-svelte';
+    import { IconExclamationCircle } from '@appwrite.io/pink-icons-svelte';
+    import { Modal, Code } from '$lib/components';
     import { type Models, type Payload, Query } from '@appwrite.io/console';
+
+    // re-render the key for sheet UI.
+    import { hash } from '$lib/helpers/string';
+    import { spreadsheetRenderKey } from '$routes/(console)/project-[region]-[project]/databases/database-[database]/table-[table]/store';
+    import { Link } from '$lib/elements';
+
+    type CsvImportError = {
+        [key: string]: number | string | null;
+    };
 
     type ImportItem = {
         status: string;
-        collection?: string;
+        table?: string;
+        errors?: string[];
     };
 
     type ImportItemsMap = Map<string, ImportItem>;
@@ -22,46 +33,39 @@
      * Keeps a track of the active and ongoing csv migrations.
      *
      * The structure is as follows -
-     * `{ migrationId: { status: status, collection: collection } }`
+     * `{ migrationId: { status: status, table: table } }`
      */
-    const importItems: Writable<ImportItemsMap> = writable(new Map());
+    let importItems = $state<ImportItemsMap>(new Map());
 
-    async function showCompletionNotification(
-        database: string,
-        collection: string,
-        payload: Payload
-    ) {
+    async function showCompletionNotification(database: string, table: string, payload: Payload) {
         const isSuccess = payload.status === 'completed';
         const isError = !isSuccess && !!payload.errors;
 
         if (!isSuccess && !isError) return;
 
         let errorMessage = 'Import failed. Check your CSV for correct fields and required values.';
-        if (isError && Array.isArray(payload.errors)) {
-            try {
-                // the `errors` is a list of json encoded string.
-                errorMessage = JSON.parse(payload.errors[0]).message;
-            } catch {
-                // do nothing, fallback to default message.
-            }
+        const errors = getErrors(payload);
+        if (errors) {
+            errorMessage = extractErrorMessage(errors);
         }
 
         const type = isSuccess ? 'success' : 'error';
         const message = isError ? errorMessage : 'CSV import finished successfully.';
-        const url = `${base}/project-${page.params.region}-${page.params.project}/databases/database-${database}/collection-${collection}`;
+        const url = `${base}/project-${page.params.region}-${page.params.project}/databases/database-${database}/table-${table}`;
 
         addNotification({
             type,
             message,
             isHtml: true,
             buttons:
-                isSuccess && collection !== page.params.collection
-                    ? [{ name: 'View documents', method: () => goto(url) }]
+                isSuccess && table !== page.params.table
+                    ? [{ name: 'View rows', method: () => goto(url) }]
                     : undefined
         });
 
         if (isSuccess) {
-            await invalidate(Dependencies.DOCUMENTS);
+            await invalidate(Dependencies.ROWS);
+            spreadsheetRenderKey.set(hash(Date.now().toString()));
         }
     }
 
@@ -70,49 +74,75 @@
 
         const status = importData.status;
         const resourceId = importData.resourceId ?? '';
-        const [databaseId, collectionId] = resourceId.split(':') ?? [];
+        const [databaseId, tableId] = resourceId.split(':') ?? [];
 
-        const current = $importItems.get(importData.$id);
-        let collectionName = current?.collection ?? null;
+        const current = importItems.get(importData.$id);
+        let tableName = current?.table ?? null;
 
-        if (!collectionName && collectionId) {
+        if (!tableName && tableId) {
             try {
-                const collection = await sdk
+                const table = await sdk
                     .forProject(page.params.region, page.params.project)
-                    .databases.getCollection(databaseId, collectionId);
-                collectionName = collection.name;
+                    .tablesDB.getTable({
+                        databaseId,
+                        tableId
+                    });
+                tableName = table.name;
             } catch {
-                collectionName = null;
+                tableName = null;
             }
         }
 
-        importItems.update((items) => {
-            const existing = items.get(importData.$id);
+        if (tableId && tableName === null) {
+            const next = new Map(importItems);
+            next.delete(importData.$id);
+            importItems = next;
+            return;
+        }
 
-            const isDone = (s: string) => s === 'completed' || s === 'failed';
-            const isInProgress = (s: string) => ['pending', 'processing', 'uploading'].includes(s);
+        const existing = importItems.get(importData.$id);
 
-            const shouldSkip =
-                (existing && isDone(existing.status) && isInProgress(status)) ||
-                existing?.status === status;
+        const isDone = (s: string) => s === 'completed' || s === 'failed';
+        const isInProgress = (s: string) => ['pending', 'processing', 'uploading'].includes(s);
 
-            if (shouldSkip) return items;
+        const shouldSkip =
+            (existing && isDone(existing.status) && isInProgress(status)) ||
+            existing?.status === status;
 
-            const next = new Map(items);
-            next.set(importData.$id, { status, collection: collectionName ?? undefined });
-            return next;
-        });
+        if (!shouldSkip) {
+            const next = new Map(importItems);
+            const errors = getErrors(importData);
+            next.set(importData.$id, { status, table: tableName ?? undefined, errors });
+            importItems = next;
+        }
 
         if (status === 'completed' || status === 'failed') {
-            await showCompletionNotification(databaseId, collectionId, importData);
+            await showCompletionNotification(databaseId, tableId, importData);
         }
     }
 
     function clear() {
-        importItems.update((items) => {
-            items.clear();
-            return items;
-        });
+        importItems = new Map();
+    }
+
+    function getErrors(importData: Payload | Models.Migration): string[] | undefined {
+        return Array.isArray(importData.errors) ? importData.errors : undefined;
+    }
+
+    function parseError(error: string): string | CsvImportError {
+        try {
+            return JSON.parse(error) as CsvImportError;
+        } catch {
+            return error;
+        }
+    }
+
+    function extractErrorMessage(errors: string[]): string {
+        try {
+            return JSON.parse(errors[0]).message;
+        } catch {
+            return 'Import failed. Check your CSV for correct fields and required values.';
+        }
     }
 
     function graphSize(status: string): number {
@@ -135,8 +165,9 @@
         const name = collectionName ? `<b>${collectionName}</b>` : '';
         switch (status) {
             case 'completed':
+                return `CSV import completed${name ? ` to ${name}` : ''}`;
             case 'failed':
-                return `Import to ${name} ${status}`;
+                return `CSV import failed${name ? ` to ${name}` : ''}`;
             case 'processing':
                 return `Importing CSV file${name ? ` to ${name}` : ''}`;
             default:
@@ -146,15 +177,17 @@
 
     onMount(() => {
         sdk.forProject(page.params.region, page.params.project)
-            .migrations.list([
-                Query.equal('source', 'CSV'),
-                Query.equal('status', ['pending', 'processing'])
-            ])
+            .migrations.list({
+                queries: [
+                    Query.equal('source', 'CSV'),
+                    Query.equal('status', ['pending', 'processing'])
+                ]
+            })
             .then((migrations) => {
                 migrations.migrations.forEach(updateOrAddItem);
             });
 
-        return sdk.forConsoleIn(page.params.region).client.subscribe('console', (response) => {
+        return realtime.forConsole(page.params.region, 'console', (response) => {
             if (!response.channels.includes(`projects.${getProjectId()}`)) return;
             if (response.events.includes('migrations.*')) {
                 updateOrAddItem(response.payload as Payload);
@@ -162,8 +195,18 @@
         });
     });
 
-    $: isOpen = true;
-    $: showCsvImportBox = $importItems.size > 0;
+    let isOpen = $state(true);
+    let showCsvImportBox = $derived(importItems.size > 0);
+
+    let showDetails = $state(false);
+    let selectedErrors = $state<string[]>([]);
+    let parsedErrors = $state<Array<string | CsvImportError>>([]);
+
+    function openDetails(errors: string[] | undefined) {
+        selectedErrors = errors ?? [];
+        parsedErrors = selectedErrors.map(parseError);
+        showDetails = true;
+    }
 </script>
 
 {#if showCsvImportBox}
@@ -172,57 +215,100 @@
             <header class="upload-box-header">
                 <h4 class="upload-box-title">
                     <Typography.Text variant="m-500">
-                        Importing documents ({$importItems.size})
+                        Importing rows ({importItems.size})
                     </Typography.Text>
                 </h4>
                 <button
                     class="upload-box-button"
                     class:is-open={isOpen}
                     aria-label="toggle upload box"
-                    on:click={() => (isOpen = !isOpen)}>
+                    onclick={() => (isOpen = !isOpen)}>
                     <span class="icon-cheveron-up" aria-hidden="true"></span>
                 </button>
-                <button
-                    class="upload-box-button"
-                    aria-label="close backup restore box"
-                    on:click={clear}>
+                <button class="upload-box-button" aria-label="close CSV import box" onclick={clear}>
                     <span class="icon-x" aria-hidden="true"></span>
                 </button>
             </header>
 
-            {#each [...$importItems.entries()] as [key, value] (key)}
-                <div class="upload-box-content" class:is-open={isOpen}>
-                    <ul class="upload-box-list">
-                        <li class="upload-box-item">
-                            <section class="progress-bar u-width-full-line">
-                                <div
-                                    class="progress-bar-top-line u-flex u-gap-8 u-main-space-between">
-                                    <Typography.Text>
-                                        {@html text(value.status, value.collection)}
-                                    </Typography.Text>
-                                </div>
-                                <div
-                                    class="progress-bar-container"
-                                    class:is-danger={value.status === 'failed'}
-                                    style="--graph-size:{graphSize(value.status)}%">
-                                </div>
-                            </section>
-                        </li>
-                    </ul>
-                </div>
-            {/each}
+            <div class="upload-box-content-list">
+                {#each [...importItems.entries()] as [key, value] (key)}
+                    <div class="upload-box-content" class:is-open={isOpen}>
+                        <ul class="upload-box-list">
+                            <li class="upload-box-item">
+                                <section class="progress-bar u-width-full-line">
+                                    <div
+                                        class="progress-bar-top-line u-flex u-gap-8 u-main-space-between">
+                                        <Typography.Text>
+                                            {@html text(value.status, value.table)}
+                                        </Typography.Text>
+                                    </div>
+                                    <div
+                                        class="progress-bar-container"
+                                        class:is-danger={value.status === 'failed'}
+                                        style="--graph-size:{graphSize(value.status)}%">
+                                    </div>
+                                    {#if value.status === 'failed'}
+                                        <Layout.Stack
+                                            direction="row"
+                                            gap="xs"
+                                            alignItems="center"
+                                            inline>
+                                            <Icon
+                                                icon={IconExclamationCircle}
+                                                color="--fgcolor-error"
+                                                size="s" />
+                                            <Typography.Text color="--fgcolor-error">
+                                                There was an import issue.
+                                                <Link
+                                                    style="color: inherit"
+                                                    onclick={() => openDetails(value.errors)}
+                                                    >View details</Link>
+                                            </Typography.Text>
+                                        </Layout.Stack>
+                                    {/if}
+                                </section>
+                            </li>
+                        </ul>
+                    </div>
+                {/each}
+            </div>
         </section>
     </Layout.Stack>
 {/if}
 
+<Modal title="Import error" bind:show={showDetails} hideFooter>
+    <Layout.Stack gap="m">
+        <Layout.Stack>
+            <Code
+                language="json"
+                code={JSON.stringify(parsedErrors, null, 2)}
+                withCopy
+                allowScroll />
+        </Layout.Stack>
+    </Layout.Stack>
+</Modal>
+
 <style lang="scss">
+    .upload-box {
+        display: flex;
+        max-height: 320px;
+        flex-direction: column;
+    }
+
+    .upload-box-header {
+        flex-shrink: 0;
+    }
+
     .upload-box-title {
         font-size: 11px;
     }
 
+    .upload-box-content-list {
+        overflow-y: auto;
+    }
+
     .upload-box-content {
-        min-width: 400px;
-        max-width: 100vw;
+        width: 324px;
     }
 
     .upload-box-button {

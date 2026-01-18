@@ -24,7 +24,7 @@
     let formComponent: Form;
     let isSubmitting = writable(false);
     let showCustomId = false;
-    let id: string;
+    let id: string | null = null;
     let file: Models.File;
     let data: Writable<[string, string][]> = writable([['', '']]);
     let title: string;
@@ -47,24 +47,19 @@
 
             const response = await sdk
                 .forProject(page.params.region, page.params.project)
-                .messaging.createPush(
+                .messaging.createPush({
                     messageId,
                     title,
                     body,
                     topics,
                     users,
                     targets,
-                    customData,
-                    undefined,
-                    fileCompoundId,
-                    undefined,
-                    undefined,
-                    undefined,
-                    undefined,
-                    undefined,
+                    data: customData,
+                    image: fileCompoundId,
                     draft,
                     scheduledAt
-                );
+                });
+
             let message = '';
             switch (response.status) {
                 case 'draft':
@@ -192,7 +187,7 @@
             <Fieldset legend="Targets">
                 <Targets type={MessagingProviderType.Push} bind:topics bind:targets />
             </Fieldset>
-            <Fieldset legend="Schedule">
+            <Fieldset legend="Settings">
                 <Schedule bind:scheduledAt {targets} />
             </Fieldset>
         </Layout.Stack>

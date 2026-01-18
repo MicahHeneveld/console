@@ -57,13 +57,15 @@
 
     async function addDomain() {
         const apexDomain = getApexDomain(domainName);
-        let domain = data.domains?.domains.find((d: Models.Domain) => d.domain === apexDomain);
-
         const isSiteDomain = domainName.endsWith($regionalConsoleVariables._APP_DOMAIN_SITES);
+        const domain = data.domainsList.domains.find((d) => d.domain === apexDomain);
 
         if (isCloud && apexDomain && !domain && !isSiteDomain) {
             try {
-                domain = await sdk.forConsole.domains.create($project.teamId, apexDomain);
+                await sdk.forConsole.domains.create({
+                    teamId: $project.teamId,
+                    domain: apexDomain
+                });
             } catch (error) {
                 // apex might already be added on organization level, skip.
                 const alreadyAdded = error?.type === 'domain_already_exists';
@@ -82,28 +84,41 @@
             if (behaviour === 'BRANCH') {
                 rule = await sdk
                     .forProject(page.params.region, page.params.project)
-                    .proxy.createSiteRule(domainName, page.params.site, branch);
+                    .proxy.createSiteRule({
+                        domain: domainName,
+                        siteId: page.params.site,
+                        branch
+                    });
             } else if (behaviour === 'REDIRECT') {
                 rule = await sdk
                     .forProject(page.params.region, page.params.project)
-                    .proxy.createRedirectRule(
-                        domainName,
-                        redirect,
+                    .proxy.createRedirectRule({
+                        domain: domainName,
+                        url: redirect,
                         statusCode,
-                        page.params.site,
-                        ProxyResourceType.Site
-                    );
+                        resourceId: page.params.site,
+                        resourceType: ProxyResourceType.Site
+                    });
             } else if (behaviour === 'ACTIVE') {
                 rule = await sdk
                     .forProject(page.params.region, page.params.project)
-                    .proxy.createSiteRule(domainName, page.params.site);
+                    .proxy.createSiteRule({
+                        domain: domainName,
+                        siteId: page.params.site
+                    });
             }
-            if (rule?.status === 'verified') {
+
+            await invalidate(Dependencies.SITES_DOMAINS);
+
+            const verified = rule?.status !== 'created';
+            if (verified) {
+                addNotification({
+                    type: 'success',
+                    message: 'Domain verified successfully'
+                });
                 await goto(routeBase);
-                await invalidate(Dependencies.SITES_DOMAINS);
             } else {
                 await goto(`${routeBase}/add-domain/verify-${domainName}?rule=${rule.$id}`);
-                await invalidate(Dependencies.SITES_DOMAINS);
             }
         } catch (error) {
             addNotification({
@@ -115,28 +130,24 @@
 
     async function connect(selectedInstallationId: string, selectedRepository: string) {
         try {
-            await sdk
-                .forProject(page.params.region, page.params.project)
-                .sites.update(
-                    data.site.$id,
-                    data.site.name,
-                    data.site.framework as Framework,
-                    data.site.enabled,
-                    data.site.logging || undefined,
-                    data.site.timeout,
-                    data.site.installCommand,
-                    data.site.buildCommand,
-                    data.site.outputDirectory,
-                    data.site.buildRuntime as BuildRuntime,
-                    data.site.adapter as Adapter,
-                    data.site.fallbackFile,
-                    selectedInstallationId,
-                    selectedRepository,
-                    'main',
-                    undefined,
-                    undefined,
-                    undefined
-                );
+            await sdk.forProject(page.params.region, page.params.project).sites.update({
+                siteId: data.site.$id,
+                name: data.site.name,
+                framework: data.site.framework as Framework,
+                enabled: data.site.enabled,
+                logging: data.site.logging || undefined,
+                timeout: data.site.timeout,
+                installCommand: data.site.installCommand,
+                buildCommand: data.site.buildCommand,
+                outputDirectory: data.site.outputDirectory,
+                buildRuntime: data.site.buildRuntime as BuildRuntime,
+                adapter: data.site.adapter as Adapter,
+                fallbackFile: data.site.fallbackFile,
+                installationId: selectedInstallationId,
+                providerRepositoryId: selectedRepository,
+                providerBranch: 'main'
+            });
+
             invalidate(Dependencies.SITE);
         } catch {
             return;

@@ -30,11 +30,14 @@
 
     async function addDomain() {
         const apexDomain = getApexDomain(domainName);
-        let domain = data.domains?.domains.find((d: Models.Domain) => d.domain === apexDomain);
+        const domain = data.domainsList.domains.find((d: Models.Domain) => d.domain === apexDomain);
 
         if (apexDomain && !domain && isCloud) {
             try {
-                domain = await sdk.forConsole.domains.create($project.teamId, apexDomain);
+                await sdk.forConsole.domains.create({
+                    teamId: $project.teamId,
+                    domain: apexDomain
+                });
             } catch (error) {
                 // apex might already be added on organization level, skip.
                 const alreadyAdded = error?.type === 'domain_already_exists';
@@ -51,23 +54,19 @@
         try {
             const rule = await sdk
                 .forProject(page.params.region, page.params.project)
-                .proxy.createAPIRule(domainName.toLocaleLowerCase());
-            if (rule?.status === 'verified') {
+                .proxy.createAPIRule({ domain: domainName.toLocaleLowerCase() });
+
+            await invalidate(Dependencies.DOMAINS);
+
+            const verified = rule?.status !== 'created';
+            if (verified) {
+                addNotification({
+                    type: 'success',
+                    message: 'Domain verified successfully'
+                });
                 await goto(routeBase);
-                await invalidate(Dependencies.DOMAINS);
             } else {
-                let redirect = `${routeBase}/add-domain/verify-${domainName}?rule=${rule.$id}`;
-
-                if (isCloud) {
-                    /**
-                     * Domains are only on cloud!
-                     * Self-hosted instances have rules.
-                     */
-                    redirect += `&domain=${domain.$id}`;
-                }
-
-                await goto(redirect);
-                await invalidate(Dependencies.DOMAINS);
+                await goto(`${routeBase}/add-domain/verify-${domainName}?rule=${rule.$id}`);
             }
         } catch (error) {
             addNotification({

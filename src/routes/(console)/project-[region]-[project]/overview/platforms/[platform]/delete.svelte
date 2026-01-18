@@ -13,8 +13,11 @@
     let error: string;
     async function handleDelete() {
         try {
-            await sdk.forConsole.projects.deletePlatform($project.$id, $platform.$id);
-            await invalidate(Dependencies.PLATFORMS);
+            await sdk.forConsole.projects.deletePlatform({
+                projectId: $project.$id,
+                platformId: $platform.$id
+            });
+            await invalidate(Dependencies.PROJECT);
             showDelete = false;
             addNotification({
                 type: 'success',

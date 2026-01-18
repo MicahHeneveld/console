@@ -18,36 +18,67 @@
     import { Card } from '$lib/components';
     import { page } from '$app/state';
     import { onMount } from 'svelte';
-    import { sdk } from '$lib/stores/sdk';
+    import { getApiEndpoint, realtime, sdk } from '$lib/stores/sdk';
     import { Submit, trackError, trackEvent } from '$lib/actions/analytics';
     import { addNotification } from '$lib/stores/notifications';
     import { fade } from 'svelte/transition';
     import ConnectionLine from './components/ConnectionLine.svelte';
     import OnboardingPlatformCard from './components/OnboardingPlatformCard.svelte';
     import { PlatformType } from '@appwrite.io/console';
-    import { isCloud } from '$lib/system';
     import { project } from '../../store';
+    import { getCorrectTitle, type PlatformProps } from './store';
+    import LlmBanner from './llmBanner.svelte';
 
-    let showExitModal = false;
-    let isPlatformCreated = false;
-    let isCreatingPlatform = false;
-    let connectionSuccessful = false;
+    let { isConnectPlatform = false, platform = PlatformType.Flutterandroid }: PlatformProps =
+        $props();
+
+    let showExitModal = $state(false);
+    let isCreatingPlatform = $state(false);
+    let connectionSuccessful = $state(false);
+    let isPlatformCreated = $state(isConnectPlatform);
+
     const projectId = page.params.project;
+    const VERSIONS_ENDPOINT = (() => {
+        const endpoint = getApiEndpoint(page.params.region);
+        const url = new URL('/versions', endpoint);
+        return url.toString();
+    })();
+    let flutterSdkVersion = $state('20.3.0');
+
+    function buildFlutterInstructions(version: string) {
+        return `
+Install the Appwrite Flutter SDK using the following command:
+
+\`\`\`
+flutter pub add appwrite:${version}
+\`\`\`
+
+From a suitable lib directory, export the Appwrite client as a global variable, hardcode the project details too:
+
+\`\`\`
+final Client client = Client()
+  .setProject("${projectId}")
+  .setEndpoint("${sdk.forProject(page.params.region, page.params.project).client.config.endpoint}");
+\`\`\`
+
+On the homepage of the app, create a button that says "Send a ping" and when clicked, it should call the following function:
+
+\`\`\`
+client.ping();
+\`\`\`
+        `;
+    }
+
+    const alreadyExistsInstructions = $derived(buildFlutterInstructions(flutterSdkVersion));
 
     const gitCloneCode =
         '\ngit clone https://github.com/appwrite/starter-for-flutter\ncd starter-for-flutter\n';
 
-    const baseConfig = `class Environment {
+    const configCode = `class Environment {
   static const String appwriteProjectId = '${projectId}';
-  static const String appwriteProjectName = '${$project.name}';`;
-
-    const updateConfigCode = isCloud
-        ? `${baseConfig}\n}`
-        : `${baseConfig}
-  static const String appwriteEndpoint = '${sdk.forProject(page.params.region, page.params.project).client.config.endpoint}';
+  static const String appwriteProjectName = '${$project.name}';
+  static const String appwritePublicEndpoint = '${sdk.forProject(page.params.region, page.params.project).client.config.endpoint}';
 }`;
-
-    export let platform: PlatformType = PlatformType.Flutterandroid;
 
     let platforms: { [key: string]: PlatformType } = {
         Android: PlatformType.Flutterandroid,
@@ -113,19 +144,38 @@
         [PlatformType.Flutterwindows]: 'Package name'
     };
 
+    async function fetchFlutterSdkVersion() {
+        try {
+            const response = await fetch(VERSIONS_ENDPOINT);
+            if (!response.ok) {
+                throw new Error(`Failed to fetch versions: ${response.status}`);
+            }
+            const data = await response.json();
+            const latestVersion = data?.['client-flutter'];
+            if (typeof latestVersion === 'string' && latestVersion.trim()) {
+                flutterSdkVersion = latestVersion.trim();
+            }
+        } catch (error) {
+            console.error('Unable to fetch latest Flutter SDK version', error);
+        }
+    }
+
     async function createFlutterPlatform() {
         try {
             isCreatingPlatform = true;
-            await sdk.forConsole.projects.createPlatform(
+            await sdk.forConsole.projects.createPlatform({
                 projectId,
-                platform,
-                $createPlatform.name,
-                platform === PlatformType.Flutterweb ? undefined : $createPlatform.key || undefined,
-                undefined,
-                platform === PlatformType.Flutterweb
-                    ? $createPlatform.hostname || undefined
-                    : undefined
-            );
+                type: platform,
+                name: $createPlatform.name,
+                key:
+                    platform === PlatformType.Flutterweb
+                        ? undefined
+                        : $createPlatform.key || undefined,
+                hostname:
+                    platform === PlatformType.Flutterweb
+                        ? $createPlatform.hostname || undefined
+                        : undefined
+            });
 
             isPlatformCreated = true;
             trackEvent(Submit.PlatformCreate, {
@@ -137,8 +187,7 @@
                 message: 'Platform created.'
             });
 
-            invalidate(Dependencies.PROJECT);
-            invalidate(Dependencies.PLATFORMS);
+            await invalidate(Dependencies.PROJECT);
         } catch (error) {
             trackError(error, Submit.PlatformCreate);
             addNotification({
@@ -155,7 +204,8 @@
     }
 
     onMount(() => {
-        const unsubscribe = sdk.forConsole.client.subscribe('console', (response) => {
+        fetchFlutterSdkVersion();
+        const unsubscribe = realtime.forConsole(page.params.region, 'console', (response) => {
             if (response.events.includes(`projects.${projectId}.ping`)) {
                 connectionSuccessful = true;
                 invalidate(Dependencies.ORGANIZATION);
@@ -171,7 +221,10 @@
     });
 </script>
 
-<Wizard title="Add Flutter platform" bind:showExitModal confirmExit={!isPlatformCreated}>
+<Wizard
+    bind:showExitModal
+    confirmExit={!isPlatformCreated}
+    title={getCorrectTitle(isConnectPlatform, 'Flutter')}>
     <Layout.Stack gap="xxl">
         <Form onSubmit={createFlutterPlatform}>
             <Layout.Stack gap="xxl">
@@ -275,6 +328,11 @@
         {#if isPlatformCreated}
             <Fieldset legend="Clone starter" badge="Optional">
                 <Layout.Stack gap="l">
+                    <LlmBanner
+                        platform="flutter"
+                        {configCode}
+                        {alreadyExistsInstructions}
+                        openers={['cursor']} />
                     <Typography.Text variant="m-500">
                         1. If you're starting a new project, you can clone our starter kit from
                         GitHub using the terminal, VSCode or Android Studio.
@@ -291,7 +349,7 @@
 
                     <!-- Temporary fix: Remove this div once Code splitting issue with stack spacing is resolved -->
                     <div class="pink2-code-margin-fix">
-                        <Code lang="dart" lineNumbers code={updateConfigCode} />
+                        <Code lang="dart" lineNumbers code={configCode} />
                     </div>
 
                     <Typography.Text variant="m-500"

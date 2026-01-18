@@ -29,7 +29,6 @@ export const load: PageLoad = async ({ parent }) => {
                     ID.unique(),
                     'Personal projects',
                     BillingPlan.FREE,
-                    null,
                     null
                 );
                 trackEvent(Submit.OrganizationCreate, {
@@ -52,10 +51,10 @@ export const load: PageLoad = async ({ parent }) => {
             } else {
                 return {
                     accountPrefs,
-                    organization: await sdk.forConsole.teams.create(
-                        ID.unique(),
-                        'Personal projects'
-                    )
+                    organization: await sdk.forConsole.teams.create({
+                        teamId: ID.unique(),
+                        name: 'Personal projects'
+                    })
                 };
             }
         } catch (e) {
@@ -65,10 +64,9 @@ export const load: PageLoad = async ({ parent }) => {
         const org = organizations.teams[0];
         let projects: Models.ProjectList = null;
         try {
-            projects = await sdk.forConsole.projects.list([
-                Query.equal('teamId', org.$id),
-                Query.limit(1)
-            ]);
+            projects = await sdk.forConsole.projects.list({
+                queries: [Query.equal('teamId', org.$id), Query.limit(1), Query.select(['$id'])]
+            });
         } catch (e) {
             redirect(303, `${base}/organization-${org.$id}`);
         }

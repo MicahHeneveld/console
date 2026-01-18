@@ -1,10 +1,11 @@
 <script lang="ts" context="module">
     import { total } from '$lib/helpers/array';
+    import { clampMin } from '$lib/helpers/numbers';
     import type { Metric } from '$lib/sdk/usage';
 
     export function totalMetrics(set: Array<unknown>): number {
         if (!set) return 0;
-        return total((set as Metric[]).map((c) => c.value));
+        return clampMin(total((set as Metric[]).map((c) => c.value)));
     }
 </script>
 
@@ -134,7 +135,7 @@
                                 <Typography.Title>
                                     {formatNum($usage.documentsTotal ?? 0)}
                                 </Typography.Title>
-                                <Typography.Text>Documents</Typography.Text>
+                                <Typography.Text>Rows</Typography.Text>
                             </div>
                         </div>
                     </Card.Link>

@@ -7,12 +7,15 @@ type Metadata = {
 };
 
 export async function enterCreditCard(page: Page) {
-    const dialog = page.locator('.modal').filter({
-        hasText: 'add payment method'
-    });
-    await dialog.waitFor({
-        state: 'visible'
-    });
+    // click the `add` button inside correct view layer
+    await page
+        .locator('#no-payments-card-stack')
+        .getByRole('button', { name: 'add' })
+        .first()
+        .click();
+
+    const dialog = page.locator('.modal').filter({ hasText: 'add payment method' });
+    await dialog.waitFor({ state: 'visible' });
     await page.getByPlaceholder('cardholder').fill('Test User');
     const stripe = page.locator('[title="Secure payment input frame"]').nth(0).contentFrame();
     await stripe.locator('id=Field-numberInput').fill('4242424242424242');
@@ -35,7 +38,6 @@ export async function createProProject(page: Page): Promise<Metadata> {
         await page.getByRole('radio', { name: /^Pro\b/ }).check();
         // `create organization` because there's already free created on start!
         await page.getByRole('button', { name: 'create organization' }).click();
-        await page.getByRole('button', { name: 'add' }).first().click();
         await enterCreditCard(page);
         // skip members
         await page.getByRole('button', { name: 'create organization' }).click();
@@ -48,10 +50,21 @@ export async function createProProject(page: Page): Promise<Metadata> {
         await page.waitForURL(/\/organization-[^/]+/);
         await page.getByRole('button', { name: 'create project' }).first().click();
         const dialog = page.locator('dialog[open]');
+
         await dialog.getByPlaceholder('Project name').fill('test project');
+
+        let region = 'fra'; // for fallback
+        const regionPicker = dialog.locator('button[role="combobox"]');
+        if (await regionPicker.isVisible()) {
+            await regionPicker.click();
+            await page.getByRole('option', { name: /New York/i }).click();
+
+            region = 'nyc';
+        }
+
         await dialog.getByRole('button', { name: 'create' }).click();
-        await page.waitForURL(/\/project-fra-[^/]+/);
-        expect(page.url()).toContain('/console/project-fra-');
+        await page.waitForURL(new RegExp(`/project-${region}-[^/]+`));
+        expect(page.url()).toContain(`/console/project-${region}-`);
 
         return getProjectIdFromUrl(page.url());
     });

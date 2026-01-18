@@ -1,5 +1,6 @@
 import { sdk } from '$lib/stores/sdk';
 import { Dependencies } from '$lib/constants';
+import { isCloud } from '$lib/system';
 
 export const load = async ({ params, depends, parent }) => {
     depends(Dependencies.VARIABLES);
@@ -9,10 +10,14 @@ export const load = async ({ params, depends, parent }) => {
     const [globalVariables, variables, frameworks, installations, specificationsList] =
         await Promise.all([
             sdk.forProject(params.region, params.project).projectApi.listVariables(),
-            sdk.forProject(params.region, params.project).sites.listVariables(params.site),
+            sdk
+                .forProject(params.region, params.project)
+                .sites.listVariables({ siteId: params.site }),
             sdk.forProject(params.region, params.project).sites.listFrameworks(),
             sdk.forProject(params.region, params.project).vcs.listInstallations(),
-            sdk.forProject(params.region, params.project).sites.listSpecifications()
+            isCloud
+                ? sdk.forProject(params.region, params.project).sites.listSpecifications()
+                : Promise.resolve({ specifications: [], total: 0 })
         ]);
 
     // Conflicting variables first

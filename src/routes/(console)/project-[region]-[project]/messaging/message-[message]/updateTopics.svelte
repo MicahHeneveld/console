@@ -1,6 +1,7 @@
 <script lang="ts">
     import { type Models, MessagingProviderType } from '@appwrite.io/console';
-    import { CardGrid, Empty, PaginationInline, EmptySearch } from '$lib/components';
+    import { CardGrid, Empty, PaginationInline } from '$lib/components';
+    import { Card, Empty as PinkEmpty } from '@appwrite.io/pink-svelte';
     import TopicsModal from '../topicsModal.svelte';
     import { sdk } from '$lib/stores/sdk';
     import { invalidate } from '$app/navigation';
@@ -15,6 +16,7 @@
     import { IconPlus } from '@appwrite.io/pink-icons-svelte';
     import { Icon, Layout, Table, Typography } from '@appwrite.io/pink-svelte';
     import { page } from '$app/state';
+    import { Link } from '$lib/elements';
 
     export let message: Models.Message;
     export let selectedTopicsById: Record<string, Models.Topic>;
@@ -46,15 +48,15 @@
             if (message.providerType == MessagingProviderType.Email) {
                 await sdk
                     .forProject(page.params.region, page.params.project)
-                    .messaging.updateEmail(message.$id, topicIds);
+                    .messaging.updateEmail({ messageId: message.$id, topics: topicIds });
             } else if (message.providerType == MessagingProviderType.Sms) {
                 await sdk
                     .forProject(page.params.region, page.params.project)
-                    .messaging.updateSms(message.$id, topicIds);
+                    .messaging.updateSMS({ messageId: message.$id, topics: topicIds });
             } else if (message.providerType == MessagingProviderType.Push) {
                 await sdk
                     .forProject(page.params.region, page.params.project)
-                    .messaging.updatePush(message.$id, topicIds);
+                    .messaging.updatePush({ messageId: message.$id, topics: topicIds });
             }
             await invalidate(Dependencies.MESSAGING_MESSAGE);
             addNotification({
@@ -84,13 +86,13 @@
 </script>
 
 <Form onSubmit={update}>
-    <CardGrid hideFooter={message.status != 'draft'}>
+    <CardGrid hideFooter={message.status !== 'draft'}>
         <Typography.Title size="s">Topics</Typography.Title>
         <svelte:fragment slot="aside">
             {@const sum = topicIds.length}
             {#if sum}
                 <Layout.Stack direction="row-reverse">
-                    {#if message.status == 'draft'}
+                    {#if message.status === 'draft'}
                         <Button
                             secondary
                             on:click={() => {
@@ -119,7 +121,7 @@
                                             text
                                             class="is-only-icon"
                                             ariaLabel="delete"
-                                            disabled={message.status != 'draft'}
+                                            disabled={message.status !== 'draft'}
                                             on:click={() => removeTopic(topic.$id)}>
                                             <span class="icon-x u-font-size-20" aria-hidden="true"
                                             ></span>
@@ -136,20 +138,20 @@
                         <PaginationInline total={sum} {limit} bind:offset />
                     </div>
                 {/if}
-            {:else if message.status == 'draft'}
+            {:else if message.status === 'draft'}
                 <Empty on:click={() => (showTopics = true)}>Add a topic</Empty>
             {:else}
-                <EmptySearch hidePagination>
-                    <div class="u-text-center">
-                        No topics have been selected.
-                        <p>
-                            Need a hand? Check out our <Button
-                                href="https://appwrite.io/docs/products/messaging/topics">
-                                documentation</Button
+                <Card.Base padding="none">
+                    <PinkEmpty type="secondary" title="No topics were selected">
+                        <svelte:fragment slot="description">
+                            Need a hand? Check out our <Link
+                                variant="muted"
+                                href="https://appwrite.io/docs/products/messaging/topics"
+                                external>documentation</Link
                             >.
-                        </p>
-                    </div>
-                </EmptySearch>
+                        </svelte:fragment>
+                    </PinkEmpty>
+                </Card.Base>
             {/if}
         </svelte:fragment>
         <svelte:fragment slot="actions">

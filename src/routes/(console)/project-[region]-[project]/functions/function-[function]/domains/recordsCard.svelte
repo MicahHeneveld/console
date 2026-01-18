@@ -26,7 +26,7 @@
                 </Layout.Stack>
                 <Typography.Text variant="m-400">
                     Add the following nameservers on your DNS provider. Note that DNS changes may
-                    take time to propagate fully.
+                    take up to 48 hours to propagate fully.
                 </Typography.Text>
             </Layout.Stack>
 

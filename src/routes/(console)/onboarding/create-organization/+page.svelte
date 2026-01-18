@@ -25,7 +25,6 @@
                     ID.unique(),
                     organizationName,
                     BillingPlan.FREE,
-                    null,
                     null
                 );
 
@@ -35,7 +34,10 @@
                     members_invited: 0
                 });
             } else {
-                organization = await sdk.forConsole.teams.create(ID.unique(), organizationName);
+                organization = await sdk.forConsole.teams.create({
+                    teamId: ID.unique(),
+                    name: organizationName
+                });
             }
         } catch (e) {
             trackError(e, Submit.OrganizationCreate);

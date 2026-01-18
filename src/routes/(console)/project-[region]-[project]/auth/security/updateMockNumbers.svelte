@@ -38,7 +38,10 @@
 
     async function updateMockNumbers() {
         try {
-            await sdk.forConsole.projects.updateMockNumbers($project.$id, numbers);
+            await sdk.forConsole.projects.updateMockNumbers({
+                projectId: $project.$id,
+                numbers
+            });
             await invalidate(Dependencies.PROJECT);
             addNotification({
                 type: 'success',
@@ -92,7 +95,7 @@
             Learn more</Link.Anchor>
         <svelte:fragment slot="aside">
             {#if isComponentDisabled}
-                <EmptyCardImageCloud source="email_signature_card">
+                <EmptyCardImageCloud responsive source="email_signature_card">
                     <svelte:fragment slot="image">
                         <div class=" is-only-mobile u-width-full-line u-height-100-percent">
                             {#if $app.themeInUse === 'dark'}

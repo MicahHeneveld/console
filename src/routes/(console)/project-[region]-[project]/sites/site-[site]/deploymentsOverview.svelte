@@ -11,6 +11,8 @@
     import ActivateDeploymentModal from '../activateDeploymentModal.svelte';
     import CancelDeploymentModal from './deployments/cancelDeploymentModal.svelte';
     import { capitalize } from '$lib/helpers/string';
+    import { getEffectiveBuildStatus } from '$lib/helpers/buildTimeout';
+    import { regionalConsoleVariables } from '$routes/(console)/project-[region]-[project]/store';
     import DeleteDeploymentModal from './deployments/deleteDeploymentModal.svelte';
     import DeploymentActionMenu from '../(components)/deploymentActionMenu.svelte';
     import { deploymentStatusConverter } from '$lib/stores/git';
@@ -46,9 +48,9 @@
         {@const hasAuthor = deploymentList.deployments.some((d) => d?.providerCommitAuthor)}
         <Table.Root
             columns={[
-                { id: '$id', width: 200 },
-                { id: 'status', width: { min: 80, max: 100 } },
-                { id: 'source', width: { min: 80, max: 100 } },
+                { id: '$id', width: { min: 200 } },
+                { id: 'status', width: { min: 80 } },
+                { id: 'source', width: { min: 120 } },
                 {
                     id: '$updatedAt',
                     width: { min: hasAuthor ? 280 : 100 }
@@ -64,6 +66,12 @@
                 <Table.Header.Cell {root} />
             </svelte:fragment>
             {#each deploymentList?.deployments as deployment (deployment.$id)}
+                {@const effectiveStatus = getEffectiveBuildStatus(
+                    deployment,
+                    $regionalConsoleVariables
+                )}
+                {@const displayStatus =
+                    effectiveStatus === 'finalizing' ? 'ready' : effectiveStatus}
                 <Table.Row.Link
                     {root}
                     href={`${base}/project-${page.params.region}-${page.params.project}/sites/site-${page.params.site}/deployments/deployment-${deployment.$id}`}>
@@ -71,13 +79,12 @@
                         <Id value={deployment.$id}>{deployment.$id}</Id>
                     </Table.Cell>
                     <Table.Cell {root}>
-                        {@const status = deployment.status}
                         {#if activeDeployment?.$id === deployment?.$id}
                             <Status status="complete" label="Active" />
                         {:else}
                             <Status
-                                status={deploymentStatusConverter(status)}
-                                label={capitalize(status)} />
+                                status={deploymentStatusConverter(displayStatus)}
+                                label={capitalize(displayStatus)} />
                         {/if}
                     </Table.Cell>
 

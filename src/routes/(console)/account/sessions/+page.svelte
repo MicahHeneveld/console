@@ -13,7 +13,15 @@
     import type { PageData } from './$types';
     import { addNotification } from '$lib/stores/notifications';
     import { onMount } from 'svelte';
-    import { Badge, Layout, Table, Typography } from '@appwrite.io/pink-svelte';
+    import {
+        Badge,
+        Layout,
+        Table,
+        Typography,
+        Icon,
+        InteractiveText
+    } from '@appwrite.io/pink-svelte';
+    import { IconGlobeAlt } from '@appwrite.io/pink-icons-svelte';
 
     export let data: PageData;
 
@@ -21,7 +29,7 @@
         const code = clientCode.toLowerCase();
         if (!isValueOfStringEnum(Browser, code)) return '';
 
-        return sdk.forConsole.avatars.getBrowser(code, 40, 40);
+        return sdk.forConsole.avatars.getBrowser({ code, width: 40, height: 40 });
     }
 
     function logoutSessionId(sessionId: string) {
@@ -34,7 +42,9 @@
     async function logout(session: Models.Session) {
         let result;
         try {
-            result = await sdk.forConsole.account.deleteSession(session.$id);
+            result = await sdk.forConsole.account.deleteSession({
+                sessionId: session.$id
+            });
         } catch (e) {
             addNotification({
                 type: 'error',
@@ -89,10 +99,10 @@
     <Table.Root
         let:root
         columns={[
-            { id: 'client' },
-            { id: 'location', width: 120 },
-            { id: 'ip', width: 120 },
-            { id: 'actions', width: 70 }
+            { id: 'client', width: { min: 450 } },
+            { id: 'location', width: { min: 200 } },
+            { id: 'ip', width: { min: 330 } },
+            { id: 'actions', width: 100 }
         ]}>
         <svelte:fragment slot="header" let:root>
             <Table.Header.Cell column="client" {root}>Client</Table.Header.Cell>
@@ -112,13 +122,9 @@
                                         height="20"
                                         width="20"
                                         src={getBrowser(session.clientCode).toString()}
-                                        style="--p-text-size: 1.25rem"
                                         alt={session.clientName} />
                                 {:else}
-                                    <span
-                                        class="icon-globe-alt"
-                                        style="--p-text-size: 1.25rem"
-                                        aria-hidden="true"></span>
+                                    <Icon icon={IconGlobeAlt} size="s" />
                                 {/if}
                             </div>
                             <Trim>
@@ -147,7 +153,7 @@
                     {/if}
                 </Table.Cell>
                 <Table.Cell column="ip" {root}>
-                    {session.ip}
+                    <InteractiveText variant="copy" text={session.ip} isVisible />
                 </Table.Cell>
                 <Table.Cell column="actions" {root}>
                     <Button size="xs" secondary on:click={() => logout(session)}>Sign out</Button>

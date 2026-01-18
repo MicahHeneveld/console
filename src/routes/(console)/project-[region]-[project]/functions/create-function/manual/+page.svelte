@@ -1,6 +1,6 @@
 <script lang="ts">
     import { goto, invalidate } from '$app/navigation';
-    import { base } from '$app/paths';
+    import { base, resolve } from '$app/paths';
     import { page } from '$app/state';
     import { Submit, trackError, trackEvent } from '$lib/actions/analytics';
     import { Button, Form } from '$lib/elements/forms';
@@ -23,6 +23,7 @@
     import { isCloud } from '$lib/system';
     import { humanFileSize } from '$lib/helpers/sizeConvertion';
     import { currentPlan } from '$lib/stores/organization';
+    import { uploader } from '$lib/stores/uploader';
 
     export let data;
 
@@ -38,7 +39,7 @@
         return { value, label, leadingHtml };
     });
 
-    const specificationOptions = data.specificationsList.specifications.map((size) => ({
+    const specificationOptions = (data.specificationsList?.specifications ?? []).map((size) => ({
         label:
             `${size.cpus} CPU, ${size.memory} MB RAM` +
             (!size.enabled ? ` (Upgrade to use this)` : ''),
@@ -51,76 +52,84 @@
     let isSubmitting = writable(false);
 
     let name = '';
-    let id: string;
+    let id: string | null = null;
     let runtime: Runtime;
     let entrypoint = '';
     let buildCommand = '';
     let roles: string[] = [];
     let variables: Partial<Models.Variable>[] = [];
     let files: FileList;
-    let specification = specificationOptions[0].value;
+    let specification = specificationOptions[0]?.value || '';
 
     async function create() {
+        let func: Models.Function | null = null;
+
         try {
-            const func = await sdk
-                .forProject(page.params.region, page.params.project)
-                .functions.create(
-                    id || ID.unique(),
-                    name,
-                    runtime,
-                    roles?.length ? roles : undefined,
-                    undefined,
-                    undefined,
-                    undefined,
-                    true,
-                    undefined,
-                    entrypoint,
-                    buildCommand,
-                    undefined,
-                    undefined,
-                    undefined,
-                    undefined,
-                    undefined,
-                    undefined,
-                    specification || undefined
-                );
+            func = await sdk.forProject(page.params.region, page.params.project).functions.create({
+                functionId: id || ID.unique(),
+                name,
+                runtime,
+                execute: roles?.length ? roles : undefined,
+                enabled: true,
+                entrypoint,
+                commands: buildCommand,
+                specification: specification || undefined
+            });
 
             // Add domain
-            await sdk
-                .forProject(page.params.region, page.params.project)
-                .proxy.createFunctionRule(
-                    `${ID.unique()}.${$regionalConsoleVariables._APP_DOMAIN_FUNCTIONS}`,
-                    func.$id
-                );
+            await sdk.forProject(page.params.region, page.params.project).proxy.createFunctionRule({
+                domain: `${ID.unique()}.${$regionalConsoleVariables._APP_DOMAIN_FUNCTIONS}`,
+                functionId: func.$id
+            });
 
             //Add variables
             const promises = variables.map((variable) =>
-                sdk
-                    .forProject(page.params.region, page.params.project)
-                    .functions.createVariable(
-                        func.$id,
-                        variable.key,
-                        variable.value,
-                        variable?.secret ?? false
-                    )
+                sdk.forProject(page.params.region, page.params.project).functions.createVariable({
+                    functionId: func.$id,
+                    key: variable.key,
+                    value: variable.value,
+                    secret: variable?.secret ?? false
+                })
             );
             await Promise.all(promises);
 
-            await sdk
-                .forProject(page.params.region, page.params.project)
-                .functions.createDeployment(func.$id, files[0], true, undefined, undefined);
+            const promise = uploader.uploadFunctionDeployment({
+                functionId: func.$id,
+                code: files[0]
+            });
 
+            addNotification({
+                message: 'Deployment upload started',
+                type: 'success'
+            });
             trackEvent(Submit.FunctionCreate, {
                 source: 'repository',
                 runtime: runtime
             });
 
-            await goto(
-                `${base}/project-${page.params.region}-${page.params.project}/functions/function-${func.$id}`
-            );
+            await promise;
+            const upload = $uploader.files.find((f) => f.resourceId === func.$id);
+
+            if (upload?.status === 'success') {
+                const deploymentId = upload.$id;
+                const resolvedPath = resolve(
+                    `/(console)/project-[region]-[project]/functions/function-[function]/deployment-[deployment]`,
+                    {
+                        region: page.params.region,
+                        project: page.params.project,
+                        function: func.$id,
+                        deployment: deploymentId
+                    }
+                );
+                await goto(resolvedPath);
+            }
 
             invalidate(Dependencies.FUNCTION);
         } catch (e) {
+            const upload = $uploader.files.find((f) => f.resourceId === func?.$id);
+            if (upload) {
+                uploader.removeFromQueue(upload.$id);
+            }
             addNotification({
                 type: 'error',
                 message: e.message
@@ -195,27 +204,24 @@
                     on:invalid={handleInvalid}>
                     <Layout.Stack alignItems="center" gap="s">
                         <Layout.Stack alignItems="center" gap="s">
-                            <Layout.Stack
-                                alignItems="center"
-                                justifyContent="center"
-                                direction="row"
-                                gap="s">
-                                <Typography.Text variant="l-500">
+                            <Layout.Stack alignItems="center" justifyContent="center" inline>
+                                <Typography.Text variant="l-500" align="center" inline>
                                     Drag and drop file here or click to upload
-                                </Typography.Text>
-                                <Tooltip>
                                     <Layout.Stack
+                                        style="display: inline-flex; vertical-align: middle;"
+                                        inline
                                         alignItems="center"
-                                        justifyContent="center"
-                                        inline>
-                                        <Icon icon={IconInfo} size="s" />
+                                        justifyContent="center">
+                                        <Tooltip>
+                                            <Icon icon={IconInfo} size="s" />
+                                            <svelte:fragment slot="tooltip"
+                                                >Only .tar.gz files allowed</svelte:fragment>
+                                        </Tooltip>
                                     </Layout.Stack>
-                                    <svelte:fragment slot="tooltip"
-                                        >Only .tar.gz files allowed</svelte:fragment>
-                                </Tooltip>
+                                </Typography.Text>
                             </Layout.Stack>
                             {#if maxSize > 0}
-                                <Typography.Caption variant="400"
+                                <Typography.Caption variant="400" align="center"
                                     >Max file size: {readableMaxSize.value +
                                         readableMaxSize.unit}</Typography.Caption>
                             {/if}

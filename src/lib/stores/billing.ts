@@ -8,23 +8,22 @@ import MarkedForDeletion from '$lib/components/billing/alerts/markedForDeletion.
 import MissingPaymentMethod from '$lib/components/billing/alerts/missingPaymentMethod.svelte';
 import newDevUpgradePro from '$lib/components/billing/alerts/newDevUpgradePro.svelte';
 import PaymentAuthRequired from '$lib/components/billing/alerts/paymentAuthRequired.svelte';
-import PaymentMandate from '$lib/components/billing/alerts/paymentMandate.svelte';
+
 import { BillingPlan, NEW_DEV_PRO_UPGRADE_COUPON } from '$lib/constants';
 import { cachedStore } from '$lib/helpers/cache';
 import { type Size, sizeToBytes } from '$lib/helpers/sizeConvertion';
 import type {
     AddressesList,
-    Aggregation,
+    AggregationTeam,
     Invoice,
     InvoiceList,
     PaymentList,
-    PaymentMethodData,
     Plan,
     PlansMap
 } from '$lib/sdk/billing';
 import { isCloud } from '$lib/system';
 import { activeHeaderAlert, orgMissingPaymentMethod } from '$routes/(console)/store';
-import { AppwriteException, Query } from '@appwrite.io/console';
+import { AppwriteException, Query, Platform } from '@appwrite.io/console';
 import { derived, get, writable } from 'svelte/store';
 import { headerAlert } from './headerAlert';
 import { addNotification, notifications } from './notifications';
@@ -69,7 +68,6 @@ export const roles = [
 
 export const teamStatusReadonly = 'readonly';
 export const billingLimitOutstandingInvoice = 'outstanding_invoice';
-export const billingProjectsLimitDate = '2025-09-01';
 
 export const paymentMethods = derived(page, ($page) => $page.data.paymentMethods as PaymentList);
 export const addressList = derived(page, ($page) => $page.data.addressList as AddressesList);
@@ -101,7 +99,7 @@ export function tierToPlan(tier: Tier) {
         case BillingPlan.ENTERPRISE:
             return tierEnterprise;
         default:
-            return tierFree;
+            return tierCustom;
     }
 }
 
@@ -139,6 +137,7 @@ export type PlanServices =
     | 'logs'
     | 'memberAddon'
     | 'members'
+    | 'projects'
     | 'platforms'
     | 'realtime'
     | 'realtimeAddon'
@@ -155,15 +154,23 @@ export type PlanServices =
 export function getServiceLimit(serviceId: PlanServices, tier: Tier = null, plan?: Plan): number {
     if (!isCloud) return 0;
     if (!serviceId) return 0;
-    const info = get(plansInfo);
-    if (!info) return 0;
-    plan ??= info.get(tier ?? get(organization)?.billingPlan);
-    // members are no longer a variable on plan itself!
-    // the correct info for members/seats, resides in `addons`.
-    // plan > addons > seats/others
+
+    plan ??= get(currentPlan);
+
+    if (tier) {
+        const info = get(plansInfo);
+        if (!info) return 0;
+        plan ??= info.get(tier);
+    }
+
     if (serviceId === 'members') {
-        // some don't include `limit`, so we fallback!
-        return plan?.['addons']['seats']['limit'] ?? 1;
+        if (!plan?.addons?.seats) return Infinity;
+        return plan.addons.seats?.limit ?? 1;
+    }
+
+    if (serviceId === 'projects') {
+        if (!plan?.addons?.projects) return Infinity;
+        return plan.addons.projects?.limit ?? 1;
     }
 
     return plan?.[serviceId] ?? 0;
@@ -235,6 +242,7 @@ export const tierEnterprise: TierData = {
 };
 
 export const showUsageRatesModal = writable<boolean>(false);
+export const useNewPricingModal = derived(currentPlan, ($plan) => $plan?.usagePerProject === true);
 
 export function checkForUsageFees(plan: Tier, id: PlanServices) {
     if (plan === BillingPlan.PRO || plan === BillingPlan.SCALE) {
@@ -253,11 +261,19 @@ export function checkForUsageFees(plan: Tier, id: PlanServices) {
 }
 
 export function checkForProjectLimitation(id: PlanServices) {
+    // Members are no longer limited on Pro and Scale plans (unlimited seats)
+    if (id === 'members') {
+        const currentTier = get(organization)?.billingPlan;
+        if (currentTier === BillingPlan.PRO || currentTier === BillingPlan.SCALE) {
+            return false; // No project limitation for members on Pro/Scale plans
+        }
+    }
+
     switch (id) {
         case 'databases':
         case 'functions':
         case 'buckets':
-        case 'members':
+        case 'members': // Only applies to Free plan now
         case 'platforms':
         case 'webhooks':
         case 'teams':
@@ -320,10 +336,13 @@ export function calculateTrialDay(org: Organization) {
 export async function checkForProjectsLimit(org: Organization, orgProjectCount?: number) {
     if (!isCloud) return;
     if (!org) return;
+
     const plan = await sdk.forConsole.billing.getOrganizationPlan(org.$id);
     if (!plan) return;
+
     if (plan.$id !== BillingPlan.FREE) return;
-    if (org.projects?.length > 0) return;
+    if (!org.projects) return;
+    if (org.projects.length > 0) return;
 
     const projectCount = orgProjectCount;
     if (projectCount === undefined) return;
@@ -369,6 +388,8 @@ export async function checkForUsageLimit(org: Organization) {
             return;
         }
     }
+
+    // TODO: @itznotabug - check with @abnegate, what do we do here? this is billing!
     const { bandwidth, documents, executions, storage, users } = org?.billingLimits ?? {};
     const resources = [
         { value: bandwidth, name: 'bandwidth' },
@@ -379,12 +400,8 @@ export async function checkForUsageLimit(org: Organization) {
     ];
 
     const members = org.total;
-    const plan = get(currentPlan);
-    const membersOverflow =
-        // nested null checks needed: GitHub Education plan have empty addons.
-        members > plan?.addons?.seats?.limit
-            ? members - (plan?.addons?.seats?.limit || members)
-            : 0;
+    const memberLimit = getServiceLimit('members');
+    const membersOverflow = memberLimit === Infinity ? 0 : Math.max(0, members - memberLimit);
 
     if (resources.some((r) => r.value >= 100) || membersOverflow > 0) {
         readOnly.set(true);
@@ -470,6 +487,9 @@ export async function paymentExpired(org: Organization) {
     const nots = get(notifications);
     const expiredNotification = nots.some((n) => n.message === expiredMessage);
     const expiringNotification = nots.some((n) => n.message === expiringMessage);
+    const cardExpiry = new Date(payment.expiryYear, payment.expiryMonth, 1);
+    const nextMonth = new Date(year, month + 1, 1);
+    const isExpiringNextMonth = cardExpiry.getTime() === nextMonth.getTime();
     if (payment.expired && !expiredNotification) {
         addNotification({
             type: 'error',
@@ -485,7 +505,7 @@ export async function paymentExpired(org: Organization) {
                 }
             ]
         });
-    } else if (!expiringNotification && payment.expiryYear <= year && payment.expiryMonth < month) {
+    } else if (!expiringNotification && !payment.expired && isExpiringNextMonth) {
         addNotification({
             type: 'warning',
             isHtml: true,
@@ -514,29 +534,12 @@ export function checkForMarkedForDeletion(org: Organization) {
     }
 }
 
-export const paymentMissingMandate = writable<PaymentMethodData>(null);
-
-export async function checkForMandate(org: Organization) {
-    const paymentId = org.paymentMethodId ?? org.backupPaymentMethodId;
-    if (!paymentId) return;
-    const paymentMethod = await sdk.forConsole.billing.getPaymentMethod(paymentId);
-    if (paymentMethod?.mandateId === null && paymentMethod?.country.toLowerCase() === 'in') {
-        headerAlert.add({
-            id: 'paymentMandate',
-            component: PaymentMandate,
-            show: true,
-            importance: 8
-        });
-        activeHeaderAlert.set(headerAlert.get());
-        paymentMissingMandate.set(paymentMethod);
-    }
-}
-
 export async function checkForMissingPaymentMethod() {
     const orgs = await sdk.forConsole.billing.listOrganization([
         Query.notEqual('billingPlan', BillingPlan.FREE),
         Query.isNull('paymentMethodId'),
-        Query.isNull('backupPaymentMethodId')
+        Query.isNull('backupPaymentMethodId'),
+        Query.equal('platform', Platform.Appwrite)
     ]);
     if (orgs?.total) {
         orgMissingPaymentMethod.set(orgs.teams[0]);
@@ -602,9 +605,9 @@ export const billingURL = derived(
     ($page) => `${base}/organization-${$page.data?.organization?.$id}/billing`
 );
 
-export const hideBillingHeaderRoutes = ['/console/create-organization', '/console/account'];
+export const hideBillingHeaderRoutes = [base + '/create-organization', base + '/account'];
 
-export function calculateExcess(addon: Aggregation, plan: Plan) {
+export function calculateExcess(addon: AggregationTeam, plan: Plan) {
     return {
         bandwidth: calculateResourceSurplus(addon.usageBandwidth, plan.bandwidth),
         storage: calculateResourceSurplus(addon.usageStorage, plan.storage, 'GB'),

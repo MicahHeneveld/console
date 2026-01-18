@@ -23,7 +23,11 @@
 
     async function authUpdate(box: AuthMethod) {
         try {
-            await sdk.forConsole.projects.updateAuthStatus(projectId, box.method, box.value);
+            await sdk.forConsole.projects.updateAuthStatus({
+                projectId,
+                method: box.method,
+                status: box.value
+            });
             addNotification({
                 type: 'success',
                 message: `${box.label} authentication has been updated`
@@ -73,7 +77,7 @@
                         .filter((p) => p.name !== 'Mock')
                         .sort( (a, b) => (a.enabled === b.enabled ? 0 : a.enabled ? -1 : 1) ) as provider}
                         {@const oAuthProvider = oAuthProviders[provider.key]}
-                        {#if oAuthProvider}
+                        {#if oAuthProvider && !oAuthProvider.internal}
                             <Card.Button
                                 padding="s"
                                 on:click={() => {

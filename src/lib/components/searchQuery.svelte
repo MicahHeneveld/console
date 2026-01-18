@@ -1,19 +1,32 @@
 <script lang="ts">
     import { page } from '$app/state';
+    import { onDestroy, untrack } from 'svelte';
     import { goto } from '$app/navigation';
-    import { onDestroy } from 'svelte';
     import { trackEvent } from '$lib/actions/analytics';
     import { Icon, Input } from '@appwrite.io/pink-svelte';
     import { IconSearch, IconX } from '@appwrite.io/pink-icons-svelte';
     import { debounce as createDebounce } from '$lib/helpers/debounce.js';
 
-    export let placeholder = '';
-    export let debounce = 250;
-    export let required = false;
-    export let disabled = false;
-    export let autofocus = false;
+    interface Props {
+        placeholder?: string;
+        debounce?: number;
+        required?: boolean;
+        disabled?: boolean;
+        autofocus?: boolean;
+    }
 
-    let inputValue = page.url.searchParams.get('search') ?? '';
+    let {
+        placeholder = '',
+        debounce = 250,
+        required = false,
+        disabled = false,
+        autofocus = false
+    }: Props = $props();
+
+    const initialSearch = page.url.searchParams.get('search') ?? '';
+    let inputValue = $state(initialSearch);
+    let previousInputValue = initialSearch;
+    let previousUrlSearch = initialSearch;
 
     const runSearch = createDebounce((value: string) => {
         const trimmed = value.trim();
@@ -36,14 +49,36 @@
         goto(url, { keepFocus: true });
     }, debounce);
 
-    $: runSearch(inputValue);
-
-    function clearInput() {
+    export function clearInput() {
         inputValue = '';
     }
 
     onDestroy(() => {
         runSearch.cancel?.();
+    });
+
+    $effect(() => {
+        const urlSearch = page.url.searchParams.get('search') ?? '';
+        if (urlSearch !== previousUrlSearch) {
+            previousUrlSearch = urlSearch;
+            const currentInput = untrack(() => inputValue);
+            if (urlSearch !== currentInput) {
+                inputValue = urlSearch;
+                previousInputValue = urlSearch;
+            }
+        }
+    });
+
+    $effect(() => {
+        if (inputValue !== previousInputValue) {
+            const urlSearch = untrack(() => page.url.searchParams.get('search') ?? '');
+            if (inputValue !== urlSearch) {
+                previousInputValue = inputValue;
+                runSearch(inputValue);
+            } else {
+                previousInputValue = inputValue;
+            }
+        }
     });
 </script>
 

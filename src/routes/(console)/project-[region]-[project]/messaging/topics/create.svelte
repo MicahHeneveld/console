@@ -14,14 +14,19 @@
 
     const dispatch = createEventDispatcher();
 
-    let name: string, id: string, error: string;
+    let name: string,
+        id: string | null = null,
+        error: string | null = null;
     let showCustomId = false;
 
     const create = async () => {
         try {
             const topic = await sdk
                 .forProject(page.params.region, page.params.project)
-                .messaging.createTopic(id ?? ID.unique(), name);
+                .messaging.createTopic({
+                    topicId: id ?? ID.unique(),
+                    name
+                });
             name = '';
             showCreate = false;
             showCustomId = false;

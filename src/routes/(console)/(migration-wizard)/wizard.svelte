@@ -57,6 +57,7 @@
 
     let newProjName = '';
     let projectType: 'existing' | 'new' = 'existing';
+    let newlyCreatedProject: Models.Project | null = null;
 
     async function getProjects(orgId: string | null) {
         if (!orgId) {
@@ -64,7 +65,9 @@
         } else {
             loadingProjects = true;
             projects = await sdk.forConsole.projects
-                .list([Query.equal('teamId', orgId), Query.orderDesc('$createdAt')])
+                .list({
+                    queries: [Query.equal('teamId', orgId), Query.orderDesc('$createdAt')]
+                })
                 .then((res) => res.projects);
 
             loadingProjects = false;
@@ -85,12 +88,12 @@
         creatingProject = true;
 
         try {
-            return await sdk.forConsole.projects.create(
-                ID.unique(),
-                newProjName,
-                selectedOrg,
-                $selectedRegion
-            );
+            return await sdk.forConsole.projects.create({
+                projectId: ID.unique(),
+                name: newProjName,
+                teamId: selectedOrg,
+                region: $selectedRegion
+            });
         } catch (error) {
             addNotification({
                 type: 'error',
@@ -110,12 +113,12 @@
         const resources = migrationFormToResources($formData, $provider.provider);
 
         try {
-            await projectSdkInstance.migrations.createAppwriteMigration(
+            await projectSdkInstance.migrations.createAppwriteMigration({
                 resources,
-                $provider.endpoint,
-                $provider.projectID,
-                $provider.apiKey
-            );
+                endpoint: $provider.endpoint,
+                projectId: $provider.projectID,
+                apiKey: $provider.apiKey
+            });
 
             addNotification({
                 type: 'success',
@@ -123,8 +126,9 @@
             });
             onExit();
             await invalidate(Dependencies.PROJECTS);
+            const targetProject = newlyCreatedProject ?? currentSelectedProject;
             await goto(
-                `${base}/project-${currentSelectedProject.region}-${currentSelectedProject.$id}/settings/migrations`
+                `${base}/project-${targetProject.region ?? 'default'}-${targetProject.$id}/settings/migrations`
             );
         } catch (error) {
             addNotification({
@@ -255,6 +259,7 @@
                                         } else {
                                             const project = await createNewProject();
                                             if (project !== null) {
+                                                newlyCreatedProject = project;
                                                 projectSdkInstance = sdk.forProject(
                                                     project.region,
                                                     project.$id

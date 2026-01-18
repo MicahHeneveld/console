@@ -57,7 +57,7 @@
             const res = await fetch(`${endpoint}/account/invite`, {
                 method: 'POST',
                 headers: {
-                    'X-Appwrite-Project': project,
+                    'X-Appwrite-Project': project as string,
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
@@ -71,11 +71,14 @@
             if (!res.ok) {
                 throw new Error((await res.json()).message);
             } else {
-                await sdk.forConsole.account.createEmailPasswordSession(mail, pass);
+                await sdk.forConsole.account.createEmailPasswordSession({
+                    email: mail,
+                    password: pass
+                });
                 const prefs = await sdk.forConsole.account.getPrefs();
                 const newPrefs = { ...prefs, code };
                 await Promise.all([
-                    sdk.forConsole.account.updatePrefs(newPrefs),
+                    sdk.forConsole.account.updatePrefs({ prefs: newPrefs }),
                     invalidate(Dependencies.ACCOUNT)
                 ]);
                 await goto(base);

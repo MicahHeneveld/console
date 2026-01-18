@@ -8,6 +8,8 @@
     export let sum: number;
     export let limit: number;
     export let name: string;
+    export let pageParam: string = 'page';
+    export let removeOnFirstPage: boolean = false;
 
     const options = [
         { label: '6', value: 6 },
@@ -21,12 +23,19 @@
         const url = new URL(pageStore.url);
         const previousLimit = Number(url.searchParams.get('limit'));
         url.searchParams.set('limit', limit.toString());
-        preferences.setLimit(limit);
+        await preferences.setLimit(limit);
 
-        if (url.searchParams.has('page')) {
-            const page = Number(url.searchParams.get('page'));
-            const newPage = Math.floor(((page - 1) * previousLimit) / limit);
-            url.searchParams.set('page', newPage.toString());
+        if (url.searchParams.has(pageParam)) {
+            const page = Number(url.searchParams.get(pageParam));
+            const prev =
+                Number.isFinite(previousLimit) && previousLimit > 0 ? previousLimit : limit;
+            const newPage = Math.floor(((page - 1) * prev) / limit) + 1;
+            const safePage = Math.max(1, Number.isFinite(newPage) ? newPage : 1);
+            if (removeOnFirstPage && safePage === 1) {
+                url.searchParams.delete(pageParam);
+            } else {
+                url.searchParams.set(pageParam, safePage.toString());
+            }
         }
 
         await goto(url.toString());

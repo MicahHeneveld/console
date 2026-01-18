@@ -7,8 +7,7 @@
     import { ID } from '@appwrite.io/console';
     import { createEventDispatcher } from 'svelte';
     import { isCloud } from '$lib/system';
-    import { BillingPlan } from '$lib/constants';
-    import { organization } from '$lib/stores/organization';
+    import { currentPlan } from '$lib/stores/organization';
     import { upgradeURL } from '$lib/stores/billing';
     import CreatePolicy from './database-[database]/backups/createPolicy.svelte';
     import { cronExpression, type UserBackupPolicy } from '$lib/helpers/backups';
@@ -25,8 +24,8 @@
     let id: string = null;
     let showCustomId = false;
 
-    const trackEvents = (policies) => {
-        policies.forEach((policy) => {
+    const trackEvents = (policies: UserBackupPolicy[]) => {
+        policies.forEach((policy: UserBackupPolicy) => {
             let actualDay = null;
             const monthlyBackupFrequency = policy.monthlyBackupFrequency;
             switch (monthlyBackupFrequency) {
@@ -48,7 +47,9 @@
                 policy: policy.default ? 'preset' : 'custom'
             };
 
-            if (actualDay) message['monthlyInterval'] = actualDay;
+            if (actualDay) {
+                message['monthlyInterval'] = actualDay;
+            }
 
             trackEvent('submit_policy_submit', message);
         });
@@ -60,16 +61,14 @@
         const totalPoliciesPromise = totalPolicies.map((policy) => {
             cronExpression(policy);
 
-            return sdk
-                .forProject(page.params.region, page.params.project)
-                .backups.createPolicy(
-                    ID.unique(),
-                    ['databases'],
-                    policy.retained,
-                    policy.schedule,
-                    policy.label,
-                    resourceId
-                );
+            return sdk.forProject(page.params.region, page.params.project).backups.createPolicy({
+                policyId: ID.unique(),
+                services: ['databases'],
+                retention: policy.retained,
+                schedule: policy.schedule,
+                name: policy.label,
+                resourceId
+            });
         });
 
         await Promise.all(totalPoliciesPromise);
@@ -81,7 +80,11 @@
             const databaseId = id ? id : ID.unique();
             const database = await sdk
                 .forProject(page.params.region, page.params.project)
-                .databases.create(databaseId, name);
+                .tablesDB.create({
+                    databaseId,
+                    name
+                });
+
             await createPolicies(databaseId);
 
             showCreate = false;
@@ -126,7 +129,7 @@
     <CustomId bind:show={showCustomId} name="Database" bind:id autofocus={false} />
 
     {#if isCloud}
-        {#if $organization?.billingPlan === BillingPlan.FREE}
+        {#if !$currentPlan?.backupsEnabled}
             <Alert.Inline title="This database won't be backed up" status="warning">
                 Upgrade your plan to ensure your data stays safe and backed up.
                 <svelte:fragment slot="actions">
